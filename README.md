@@ -9,8 +9,8 @@ It would be nice to have a similar property for EFS
 
 So there is no automation
 
-В этом решении предлагается полность отказаться от использования ресурса AWS::EFS::FileSystem в ваших шаблонах и заменить его на ресурс "Custom::EFS"
-При этом синтаксис останется прежним (или почти прежним TODO: проверить!!!). Добавляется только дополнительное свойство SnapshotIdentifier
+This solution proposes to completely remove the use of the AWS :: EFS :: FileSystem resource in your templates and replace it with the "Custom :: EFS" resource.
+In this case, the syntax will remain the same (or almost the same TODO: check !!!). Only the additional property SnapshotIdentifier is added
 
-Чтобы понять как это работает и для чего свойство SnapshotIdentifier посмотрите описание свойства DBSnapshotIdentifier в документации на RDS. Поведение аналогично
+To understand how this works and what the SnapshotIdentifier property is for, see the description of the DBSnapshotIdentifier property in the RDS documentation. Behavior is similar
 https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html#cfn-rds-dbinstance-dbsnapshotidentifier
