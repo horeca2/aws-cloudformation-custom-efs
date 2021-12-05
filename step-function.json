@@ -1,0 +1,301 @@
+{
+  "Comment": "A description of my state machine",
+  "StartAt": "Choice of action",
+  "States": {
+    "Choice of action": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Or": [
+            {
+              "And": [
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Create"
+                },
+                {
+                  "Or": [
+                    {
+                      "Not": {
+                        "Variable": "$.ResourceProperties.RecoveryPoint",
+                        "IsPresent": true
+                      }
+                    },
+                    {
+                      "Variable": "$.ResourceProperties.RecoveryPoint",
+                      "IsNull": true
+                    },
+                    {
+                      "Variable": "$.ResourceProperties.RecoveryPoint",
+                      "StringEquals": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "And": [
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Update"
+                },
+                {
+                  "And": [
+                    {
+                      "Or": [
+                        {
+                          "Not": {
+                            "Variable": "$.ResourceProperties.RecoveryPoint",
+                            "IsPresent": true
+                          }
+                        },
+                        {
+                          "Variable": "$.ResourceProperties.RecoveryPoint",
+                          "IsNull": true
+                        },
+                        {
+                          "Variable": "$.ResourceProperties.RecoveryPoint",
+                          "StringEquals": ""
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "And": [
+                    {
+                      "Variable": "$.OldResourceProperties.RecoveryPoint",
+                      "IsPresent": true
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.OldResourceProperties.RecoveryPoint",
+                        "IsNull": true
+                      }
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.OldResourceProperties.RecoveryPoint",
+                        "StringEquals": "emptystring"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "Next": "CreateFileSystem"
+        },
+        {
+          "Or": [
+            {
+              "And": [
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Create"
+                },
+                {
+                  "And": [
+                    {
+                      "Variable": "$.ResourceProperties.RecoveryPoint",
+                      "IsPresent": true
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.ResourceProperties.RecoveryPoint",
+                        "IsNull": true
+                      }
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.ResourceProperties.RecoveryPoint",
+                        "StringEquals": "empty"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "And": [
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Update"
+                },
+                {
+                  "And": [
+                    {
+                      "Variable": "$.ResourceProperties.RecoveryPoint",
+                      "IsPresent": true
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.ResourceProperties.RecoveryPoint",
+                        "IsNull": true
+                      }
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.ResourceProperties.RecoveryPoint",
+                        "StringEquals": "empty"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "And": [
+                    {
+                      "Variable": "$.OldResourceProperties.RecoveryPoint",
+                      "IsPresent": true
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.OldResourceProperties.RecoveryPoint",
+                        "IsNull": true
+                      }
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.OldResourceProperties.RecoveryPoint",
+                        "StringEquals": "empty"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "Not": {
+                    "Variable": "$.ResourceProperties.RecoveryPoint",
+                    "StringEqualsPath": "$.OldResourceProperties.RecoveryPoint"
+                  }
+                }
+              ]
+            }
+          ],
+          "Next": "StartRestoreJob"
+        },
+        {
+          "Variable": "$.RequestType",
+          "StringEquals": "Update",
+          "Next": "UpdateFileSystem"
+        },
+        {
+          "Variable": "$.RequestType",
+          "StringEquals": "Delete",
+          "Next": "DeleteFileSystem"
+        }
+      ]
+    },
+    "CreateFileSystem": {
+      "Type": "Task",
+      "Parameters": {
+        "CreationToken.$": "$.RequestId",
+        "AvailabilityZoneName.$": "$.ResourceProperties.AvailabilityZoneName",
+        "Backup": false,
+        "Encrypted.$": "$.ResourceProperties.Encrypted",
+        "KmsKeyId.$": "$.ResourceProperties.KmsKeyId",
+        "PerformanceMode.$": "$.ResourceProperties.PerformanceMode",
+        "ProvisionedThroughputInMibps.$": "$.ResourceProperties.ProvisionedThroughputInMibps",
+        "Tags.$": "$.ResourceProperties.FileSystemTags",
+        "ThroughputMode.$": "$.ResourceProperties.ThroughputMode"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:efs:createFileSystem",
+      "Next": "Wait 10 sec for efs state change"
+    },
+    "StartRestoreJob": {
+      "Type": "Task",
+      "Next": "Wait 30 sec for job finished",
+      "Parameters": {
+        "IamRoleArn": "MyData",
+        "Metadata": {
+          "Key": "MyData"
+        },
+        "RecoveryPointArn": "MyData"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:backup:startRestoreJob"
+    },
+    "UpdateFileSystem": {
+      "Type": "Task",
+      "Parameters": {
+        "FileSystemId": "MyData"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:efs:updateFileSystem",
+      "Next": "Wait 10 sec for efs state change"
+    },
+    "DeleteFileSystem": {
+      "Type": "Task",
+      "Parameters": {
+        "FileSystemId": "MyData"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
+      "Next": "Wait 10 sec for efs state change"
+    },
+    "Wait 30 sec for job finished": {
+      "Type": "Wait",
+      "Seconds": 5,
+      "Next": "DescribeRestoreJob"
+    },
+    "DescribeRestoreJob": {
+      "Type": "Task",
+      "Next": "Restore job finished?",
+      "Parameters": {
+        "RestoreJobId": "MyData"
+      },
+      "Resource": "arn:aws:states:::aws-sdk:backup:describeRestoreJob"
+    },
+    "Wait 10 sec for efs state change": {
+      "Type": "Wait",
+      "Seconds": 5,
+      "Next": "DescribeFileSystems"
+    },
+    "DescribeFileSystems": {
+      "Type": "Task",
+      "Parameters": {},
+      "Resource": "arn:aws:states:::aws-sdk:efs:describeFileSystems",
+      "Next": "EFS state is available or deleted?"
+    },
+    "EFS state is available or deleted?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.LifeCycleState ",
+          "StringEquals": "available",
+          "Next": "Send response to cloud formation"
+        }
+      ],
+      "Default": "Wait 10 sec for efs state change"
+    },
+    "Send response to cloud formation": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:eu-central-1:918404900336:function:f1:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    },
+    "Restore job finished?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.d",
+          "StringEquals": "dfdfd",
+          "Next": "Send response to cloud formation"
+        }
+      ],
+      "Default": "Wait 30 sec for job finished"
+    }
+  }
+}
