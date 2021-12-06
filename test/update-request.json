@@ -7,7 +7,8 @@
     "LogicalResourceId" : "MyTestResource",
     "PhysicalResourceId" : "custom resource provider-defined physical id",
     "ResourceProperties" : {
-        "RecoveryPoint": null,
+        "Restore": false,
+        "RecoveryPoint": "",
         "AvailabilityZoneName" : "eu-central-1",
         "BackupPolicy" : {
         "Status" : "DISABLED"
@@ -36,7 +37,8 @@
         "ThroughputMode" : "bursting"
      },
      "OldResourceProperties" : {
-        "RecoveryPoint": null,
+        "Restore": false,
+        "RecoveryPoint": "",
         "AvailabilityZoneName" : "eu-central-1",
         "BackupPolicy" : {
         "Status" : "DISABLED"

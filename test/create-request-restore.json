@@ -7,8 +7,8 @@
     "LogicalResourceId" : "MyTestResource",
     "ResourceProperties" : {
         "Restore": true,
-        "RecoveryPoint": "",
-        "BackupVaultName": "",
+        "RecoveryPoint": "arn:aws:backup:eu-central-1:918404900336:recovery-point:36055cf0-2ea6-4bad-b0a0-3ebb3ab65387",
+        "BackupVaultName": "aws/efs/automatic-backup-vault",
         "AvailabilityZoneName" : "eu-central-1a",
         "BackupPolicy" : {
         "Status" : "DISABLED"

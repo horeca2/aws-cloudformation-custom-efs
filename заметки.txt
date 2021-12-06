@@ -14,6 +14,24 @@ PerformanceMode			        	    createFileSystem
 ProvisionedThroughputInMibps		  createFileSystem
 ThroughputMode			        	    createFileSystem
 
+Параметры функции 
+{
+  CreationToken: 'STRING_VALUE', /* required */
+  AvailabilityZoneName: 'STRING_VALUE',
+  Backup: true || false,
+  Encrypted: true || false,
+  KmsKeyId: 'STRING_VALUE',
+  PerformanceMode: generalPurpose | maxIO,
+  ProvisionedThroughputInMibps: 'NUMBER_VALUE',
+  Tags: [
+    {
+      Key: 'STRING_VALUE', /* required */
+      Value: 'STRING_VALUE' /* required */
+    },
+    /* more items */
+  ],
+  ThroughputMode: bursting | provisioned
+}
 
 Точка восстановления задана если RecoveryPoint объявлен и не равен null и не равен пустой строке
 Точка восстановления не задана если RecoveryPoint не объявлен или равен null или равен пустой строке

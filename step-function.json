@@ -14,22 +14,8 @@
                   "StringEquals": "Create"
                 },
                 {
-                  "Or": [
-                    {
-                      "Not": {
-                        "Variable": "$.ResourceProperties.RecoveryPoint",
-                        "IsPresent": true
-                      }
-                    },
-                    {
-                      "Variable": "$.ResourceProperties.RecoveryPoint",
-                      "IsNull": true
-                    },
-                    {
-                      "Variable": "$.ResourceProperties.RecoveryPoint",
-                      "StringEquals": ""
-                    }
-                  ]
+                  "Variable": "$.ResourceProperties.Restore",
+                  "BooleanEquals": false
                 }
               ]
             },
@@ -40,46 +26,12 @@
                   "StringEquals": "Update"
                 },
                 {
-                  "And": [
-                    {
-                      "Or": [
-                        {
-                          "Not": {
-                            "Variable": "$.ResourceProperties.RecoveryPoint",
-                            "IsPresent": true
-                          }
-                        },
-                        {
-                          "Variable": "$.ResourceProperties.RecoveryPoint",
-                          "IsNull": true
-                        },
-                        {
-                          "Variable": "$.ResourceProperties.RecoveryPoint",
-                          "StringEquals": ""
-                        }
-                      ]
-                    }
-                  ]
+                  "Variable": "$.ResourceProperties.Restore",
+                  "BooleanEquals": false
                 },
                 {
-                  "And": [
-                    {
-                      "Variable": "$.OldResourceProperties.RecoveryPoint",
-                      "IsPresent": true
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.OldResourceProperties.RecoveryPoint",
-                        "IsNull": true
-                      }
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.OldResourceProperties.RecoveryPoint",
-                        "StringEquals": "emptystring"
-                      }
-                    }
-                  ]
+                  "Variable": "$.OldResourceProperties.Restore",
+                  "BooleanEquals": true
                 }
               ]
             }
@@ -95,24 +47,8 @@
                   "StringEquals": "Create"
                 },
                 {
-                  "And": [
-                    {
-                      "Variable": "$.ResourceProperties.RecoveryPoint",
-                      "IsPresent": true
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.ResourceProperties.RecoveryPoint",
-                        "IsNull": true
-                      }
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.ResourceProperties.RecoveryPoint",
-                        "StringEquals": "empty"
-                      }
-                    }
-                  ]
+                  "Variable": "$.ResourceProperties.Restore",
+                  "BooleanEquals": true
                 }
               ]
             },
@@ -123,49 +59,33 @@
                   "StringEquals": "Update"
                 },
                 {
-                  "And": [
-                    {
-                      "Variable": "$.ResourceProperties.RecoveryPoint",
-                      "IsPresent": true
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.ResourceProperties.RecoveryPoint",
-                        "IsNull": true
-                      }
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.ResourceProperties.RecoveryPoint",
-                        "StringEquals": "empty"
-                      }
-                    }
-                  ]
+                  "Variable": "$.ResourceProperties.Restore",
+                  "BooleanEquals": true
                 },
                 {
-                  "And": [
-                    {
-                      "Variable": "$.OldResourceProperties.RecoveryPoint",
-                      "IsPresent": true
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.OldResourceProperties.RecoveryPoint",
-                        "IsNull": true
-                      }
-                    },
-                    {
-                      "Not": {
-                        "Variable": "$.OldResourceProperties.RecoveryPoint",
-                        "StringEquals": "empty"
-                      }
-                    }
-                  ]
+                  "Variable": "$.OldResourceProperties.Restore",
+                  "BooleanEquals": false
+                }
+              ]
+            },
+            {
+              "And": [
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Update"
+                },
+                {
+                  "Variable": "$.ResourceProperties.Restore",
+                  "BooleanEquals": true
+                },
+                {
+                  "Variable": "$.OldResourceProperties.Restore",
+                  "BooleanEquals": true
                 },
                 {
                   "Not": {
-                    "Variable": "$.ResourceProperties.RecoveryPoint",
-                    "StringEqualsPath": "$.OldResourceProperties.RecoveryPoint"
+                    "Variable": "$.OldResourceProperties.RecoveryPoint",
+                    "StringEqualsPath": "$.ResourceProperties.RecoveryPoint"
                   }
                 }
               ]
@@ -190,7 +110,7 @@
       "Parameters": {
         "CreationToken": null,
         "AvailabilityZoneName.$": "$.AvailabilityZoneName",
-        "Backup": false,
+        "Backup": true,
         "Encrypted.$": "$.Encrypted",
         "KmsKeyId.$": "$.KmsKeyId",
         "PerformanceMode.$": "$.PerformanceMode",
@@ -199,7 +119,8 @@
         "ThroughputMode.$": "$.ThroughputMode"
       },
       "Resource": "arn:aws:states:::aws-sdk:efs:createFileSystem",
-      "Next": "Wait 10 sec for efs state change"
+      "Next": "Wait 10 sec for efs state change",
+      "InputPath": "$.ResourceProperties"
     },
     "StartRestoreJob": {
       "Type": "Task",
@@ -249,7 +170,9 @@
     },
     "DescribeFileSystems": {
       "Type": "Task",
-      "Parameters": {},
+      "Parameters": {
+        "FileSystemId.$": "$.FileSystemId"
+      },
       "Resource": "arn:aws:states:::aws-sdk:efs:describeFileSystems",
       "Next": "EFS state is available or deleted?"
     },
@@ -257,12 +180,13 @@
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.LifeCycleState ",
+          "Variable": "$.FileSystems[0].LifeCycleState",
           "StringEquals": "available",
           "Next": "Send response to cloud formation"
         }
       ],
-      "Default": "Wait 10 sec for efs state change"
+      "Default": "Wait 10 sec for efs state change",
+      "OutputPath": "$.FileSystems[0]"
     },
     "Send response to cloud formation": {
       "Type": "Task",

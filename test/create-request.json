@@ -6,7 +6,8 @@
     "ResourceType" : "Custom::TestResource",
     "LogicalResourceId" : "MyTestResource",
     "ResourceProperties" : {
-        "RecoveryPoint": null,
+        "Restore": false,
+        "RecoveryPoint": "",
         "AvailabilityZoneName" : "eu-central-1a",
         "BackupPolicy" : {
         "Status" : "DISABLED"
