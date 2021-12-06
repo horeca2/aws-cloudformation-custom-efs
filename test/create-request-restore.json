@@ -9,6 +9,7 @@
         "Restore": true,
         "RecoveryPoint": "arn:aws:backup:eu-central-1:918404900336:recovery-point:36055cf0-2ea6-4bad-b0a0-3ebb3ab65387",
         "BackupVaultName": "aws/efs/automatic-backup-vault",
+        "BackupIAMRole": "arn:aws:iam::918404900336:role/service-role/StepFunctions-MyStateMachine-role-f184143f",
         "AvailabilityZoneName" : "eu-central-1a",
         "BackupPolicy" : {
         "Status" : "DISABLED"
