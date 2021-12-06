@@ -188,15 +188,15 @@
     "CreateFileSystem": {
       "Type": "Task",
       "Parameters": {
-        "CreationToken.$": "$.RequestId",
-        "AvailabilityZoneName.$": "$.ResourceProperties.AvailabilityZoneName",
+        "CreationToken": null,
+        "AvailabilityZoneName.$": "$.AvailabilityZoneName",
         "Backup": false,
-        "Encrypted.$": "$.ResourceProperties.Encrypted",
-        "KmsKeyId.$": "$.ResourceProperties.KmsKeyId",
-        "PerformanceMode.$": "$.ResourceProperties.PerformanceMode",
-        "ProvisionedThroughputInMibps.$": "$.ResourceProperties.ProvisionedThroughputInMibps",
-        "Tags.$": "$.ResourceProperties.FileSystemTags",
-        "ThroughputMode.$": "$.ResourceProperties.ThroughputMode"
+        "Encrypted.$": "$.Encrypted",
+        "KmsKeyId.$": "$.KmsKeyId",
+        "PerformanceMode.$": "$.PerformanceMode",
+        "ProvisionedThroughputInMibps.$": "$.ProvisionedThroughputInMibps",
+        "Tags.$": "$.FileSystemTags",
+        "ThroughputMode.$": "$.ThroughputMode"
       },
       "Resource": "arn:aws:states:::aws-sdk:efs:createFileSystem",
       "Next": "Wait 10 sec for efs state change"
