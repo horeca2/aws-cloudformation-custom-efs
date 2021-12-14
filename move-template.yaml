@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  EFS:
+    Description: File system ID
+    Type: String
+Conditions:    
+  EfsPresent: !Not 
+      - !Equals 
+        - !Ref EFS
+        - ''    
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 172.31.0.0/16
+      EnableDnsHostnames: false
+      EnableDnsSupport: false
+  Subnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      MapPublicIpOnLaunch: false
+      CidrBlock: 172.31.0.0/20
+      VpcId: !Ref VPC
+  SecurityGroupLambda:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow none
+      VpcId: !Ref VPC
+  SecurityGroupEFS:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow trafic from lambda
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref SecurityGroupLambda
+      VpcId: !Ref VPC
+  
+  MountTarget:
+    Type: 'AWS::EFS::MountTarget'
+    Condition: EfsPresent
+    Properties:
+      FileSystemId: !Ref EFS
+      SecurityGroups:
+        - !Ref SecurityGroupEFS
+      SubnetId: !Ref Subnet1
+  
+  AccessPoint:
+    Type: 'AWS::EFS::AccessPoint'
+    DependsOn: MountTarget
+    Condition: EfsPresent
+    Properties:
+      FileSystemId: !Ref EFS
+      PosixUser:
+        Gid: 0
+        Uid: 0
+      RootDirectory:
+        Path: /
+  
+  RoleLambda:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
+        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemClientReadWriteAccess'
+  Lambda:
+    Type: 'AWS::Lambda::Function'
+      # Fn::If:
+      # - EfsPresent
+      # - MountTarget
+      # - Ref: AWS::NoValue    
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const { execSync } = require('child_process');
+            execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', {
+              "cwd": process.env.mountPath});
+            const response = {
+              statusCode: 200,
+              body: JSON.stringify('Hello from Lambda!'),
+            };
+            return response;
+          };
+      Environment:
+        Variables:
+          mountPath: /mnt/efs
+      FileSystemConfigs:
+        Fn::If:
+        - EfsPresent
+        - 
+          - Arn: !GetAtt 
+              - AccessPoint
+              - Arn
+            LocalMountPath: /mnt/efs
+        - Ref: AWS::NoValue      
+        # - Arn: 
+        #     Fn::If:
+        #     - EfsPresent
+        #     - !GetAtt 
+        #       - AccessPoint
+        #       - Arn
+        #     - Ref: AWS::NoValue       
+        #   LocalMountPath: /mnt/efs
+      Role: !GetAtt 
+        - RoleLambda
+        - Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupLambda
+        SubnetIds:
+          - !Ref Subnet1
+Outputs:
+  LambdaName:
+    Value: !Ref Lambda
