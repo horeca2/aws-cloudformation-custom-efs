@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  BackupPolicyStatus:
+    Type: String
+    Default: DISABLED 
+    AllowedValues:
+      - DISABLED
+      - ENABLED 
+  Encrypted:
+    Type: String
+    Default: false 
+    AllowedValues:
+      - false
+      - true    
+  PerformanceMode:
+    Type: String
+    Default: generalPurpose  
+    AllowedValues:
+      - generalPurpose
+      - maxIO
+  ProvisionedThroughputInMibps:
+    Type: String  # ЗДЕСЬ BUG с типом!!!
+  ThroughputMode:
+    Type: String
+    Default: bursting  
+    AllowedValues:
+      - bursting
+      - provisioned
+  RestorePoint:
+    Type: String
+  Vpc:
+    Type: AWS::EC2::VPC::Id  
+Conditions:
+  IsEmpty: !Equals [!Ref RestorePoint, '']  
+  IsRestore: !Not [!Condition IsEmpty]  
+       
+Resources:
+  EmptyFileSystem:
+    Type: AWS::EFS::FileSystem
+    Condition: IsEmpty
+    Properties:
+      BackupPolicy:
+        Status: !Ref BackupPolicyStatus
+      Encrypted: !Ref Encrypted
+      PerformanceMode: !Ref PerformanceMode
+      ProvisionedThroughputInMibps: !Ref ProvisionedThroughputInMibps
+      ThroughputMode: !Ref ThroughputMode
+  
+  RecoveredFileSystem:
+    Type: Custom::RecoveredFileSystem
+    Properties: 
+      ServiceToken: String
+      PerformanceMode: !Ref PerformanceMode
+
+  LambdaSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow none
+      VpcId: !Ref Vpc
+
+  LambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
+        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemClientReadWriteAccess'
+
+  Lambda:
+    Type: 'AWS::Lambda::Function' 
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            const { execSync } = require('child_process');
+            execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', {
+              "cwd": process.env.mountPath});
+            const response = {
+              statusCode: 200,
+              body: JSON.stringify('Hello from Lambda!'),
+            };
+            return response;
+          };
+      Environment:
+        Variables:
+          RestorePoint: !Ref RestorePoint
+      Role: !GetAtt 
+        - LambdaRole
+        - Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref Subnet1
+
+Outputs:
+  Efs:
+    Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
+
