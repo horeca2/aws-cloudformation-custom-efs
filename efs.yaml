@@ -1,35 +1,39 @@
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
-  BackupPolicyStatus:
-    Type: String
-    Default: DISABLED 
-    AllowedValues:
-      - DISABLED
-      - ENABLED 
-  Encrypted:
-    Type: String
-    Default: false 
-    AllowedValues:
-      - false
-      - true    
-  PerformanceMode:
-    Type: String
-    Default: generalPurpose  
-    AllowedValues:
-      - generalPurpose
-      - maxIO
-  ProvisionedThroughputInMibps:
-    Type: String  # ЗДЕСЬ BUG с типом!!!
-  ThroughputMode:
-    Type: String
-    Default: bursting  
-    AllowedValues:
-      - bursting
-      - provisioned
+  # BackupPolicyStatus:
+  #   Type: String
+  #   Default: DISABLED 
+  #   AllowedValues:
+  #     - DISABLED
+  #     - ENABLED 
+  # Encrypted:
+  #   Type: String
+  #   Default: false 
+  #   AllowedValues:
+  #     - false
+  #     - true    
+  # PerformanceMode:
+  #   Type: String
+  #   Default: generalPurpose  
+  #   AllowedValues:
+  #     - generalPurpose
+  #     - maxIO
+  # ProvisionedThroughputInMibps:
+  #   Type: String  # ЗДЕСЬ BUG с типом!!!
+  # ThroughputMode:
+  #   Type: String
+  #   Default: bursting  
+  #   AllowedValues:
+  #     - bursting
+  #     - provisioned
   RestorePoint:
     Type: String
   Vpc:
     Type: AWS::EC2::VPC::Id  
+  Subnet1:
+    Type: AWS::EC2::Subnet::Id  
+
+
 Conditions:
   IsEmpty: !Equals [!Ref RestorePoint, '']  
   IsRestore: !Not [!Condition IsEmpty]  
@@ -40,17 +44,17 @@ Resources:
     Condition: IsEmpty
     Properties:
       BackupPolicy:
-        Status: !Ref BackupPolicyStatus
-      Encrypted: !Ref Encrypted
-      PerformanceMode: !Ref PerformanceMode
-      ProvisionedThroughputInMibps: !Ref ProvisionedThroughputInMibps
-      ThroughputMode: !Ref ThroughputMode
+        Status: DISABLED
+      Encrypted: "false"
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
   
   RecoveredFileSystem:
     Type: Custom::RecoveredFileSystem
     Properties: 
-      ServiceToken: String
-      PerformanceMode: !Ref PerformanceMode
+      ServiceToken: !GetAtt RecoveredFileSystemServiceTokenLambda.Arn
+      RestorePoint: String
+   
 
   LambdaSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
@@ -73,6 +77,181 @@ Resources:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
         - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemClientReadWriteAccess'
+
+  StateMachineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AWSBackupFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
+      Policies:
+        - PolicyDocument: |
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "iam:GetRole",
+                            "iam:PassRole"
+                        ],
+                        "Resource": "arn:aws:iam::*:role/*"
+                    }
+                ]
+            }
+          PolicyName: CustomEfsPolicy1
+
+  StateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: |
+        {
+          "Comment": "A description of my state machine",
+          "StartAt": "Pass",
+          "States": {
+            "Pass": {
+              "Type": "Pass",
+              "Next": "Choice action",
+              "Result": {
+                "RequestType": "Create",
+                "ResponseURL": "http://pre-signed-S3-url-for-response",
+                "StackId": "arn:aws:cloudformation:us-west-2:123456789012:stack/stack-name/guid",
+                "RequestId": "unique id for this create request",
+                "ResourceType": "Custom::TestResource",
+                "LogicalResourceId": "MyTestResource",
+                "PhysicalResourceId": "fs-0cf8d9c37a61ae327",
+                "ResourceProperties": {
+                  "RecoveryPoint": "arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe",
+                  "BackupVaultName": "Default",
+                  "BackupIAMRoleArn": "arn:aws:iam::918404900336:role/service-role/StepFunctions-MyStateMachine-role-f184143f"
+                }
+              }
+            },
+            "Choice action": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Create",
+                  "Next": "GetRecoveryPointRestoreMetadata"
+                },
+                {
+                  "Variable": "$.RequestType",
+                  "StringEquals": "Delete",
+                  "Next": "DeleteFileSystem"
+                }
+              ],
+              "Default": "Wait"
+            },
+            "GetRecoveryPointRestoreMetadata": {
+              "Type": "Task",
+              "Parameters": {
+                "BackupVaultName.$": "$.ResourceProperties.BackupVaultName",
+                "RecoveryPointArn.$": "$.ResourceProperties.RecoveryPoint"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:backup:getRecoveryPointRestoreMetadata",
+              "ResultPath": "$.GetRecoveryPointRestoreMetadataResult",
+              "Next": "StartRestoreJob"
+            },
+            "StartRestoreJob": {
+              "Type": "Task",
+              "Parameters": {
+                "IamRoleArn.$": "$.ResourceProperties.BackupIAMRoleArn",
+                "Metadata": {
+                  "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
+                  "Encrypted": "false",
+                  "PerformanceMode": "generalPurpose",
+                  "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
+                  "newFileSystem": "true"
+                },
+                "RecoveryPointArn.$": "$.ResourceProperties.RecoveryPoint",
+                "ResourceType": "EFS"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:backup:startRestoreJob",
+              "ResultPath": "$.StartRestoreJobResult",
+              "Next": "Wait for job completed"
+            },
+            "Wait for job completed": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "DescribeRestoreJob"
+            },
+            "DescribeRestoreJob": {
+              "Type": "Task",
+              "Parameters": {
+                "RestoreJobId.$": "$.StartRestoreJobResult.RestoreJobId"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:backup:describeRestoreJob",
+              "ResultPath": "$.DescribeRestoreJobResult",
+              "Next": "Restore Job Completed?"
+            },
+            "Wait": {
+              "Type": "Wait",
+              "Seconds": 5,
+              "End": true
+            },
+            "Restore Job Completed?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.DescribeRestoreJobResult.Status",
+                  "StringEquals": "COMPLETED",
+                  "Next": "Wait"
+                }
+              ],
+              "Default": "DescribeRestoreJob"
+            },
+            "DeleteFileSystem": {
+              "Type": "Task",
+              "Parameters": {
+                "FileSystemId.$": "$.PhysicalResourceId"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
+              "Next": "Wait",
+              "ResultPath": "$.DeleteFileSystemResult"
+            }
+          }
+        }
+      # DefinitionSubstitutions:  
+      RoleArn: !GetAtt StateMachineRole.Arn
+
+  RecoveredFileSystemServiceTokenLambda:
+    Type: 'AWS::Lambda::Function' 
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            
+            const response = {
+              statusCode: 200,
+              body: JSON.stringify('Hello from Lambda!'),
+            };
+            return response;
+          };
+      Environment:
+        Variables:
+          RestorePoint: !Ref RestorePoint
+      Role: !GetAtt 
+        - LambdaRole
+        - Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref Subnet1
+
 
   Lambda:
     Type: 'AWS::Lambda::Function' 
@@ -104,7 +283,7 @@ Resources:
         SubnetIds:
           - !Ref Subnet1
 
-Outputs:
-  Efs:
-    Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
+# Outputs:
+#   Efs:
+#     Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
 
