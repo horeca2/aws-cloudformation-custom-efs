@@ -19,7 +19,7 @@ Parameters:
   #     - generalPurpose
   #     - maxIO
   # ProvisionedThroughputInMibps:
-  #   Type: String  # ЗДЕСЬ BUG с типом!!!
+  #   Type: String  # ????? BUG ? ?????!!!
   # ThroughputMode:
   #   Type: String
   #   Default: bursting  
@@ -50,12 +50,13 @@ Resources:
       ThroughputMode: bursting
   
   RecoveredFileSystem:
-    Type: Custom::RecoveredFileSystem
-    Properties: 
-      ServiceToken: !GetAtt RecoveredFileSystemServiceTokenLambda.Arn
-      RestorePoint: String
-   
-
+     Type: Custom::RecoveredFileSystem
+     Properties: 
+       ServiceToken: !GetAtt LambdaStartExecutionStepFunction.Arn
+       BackupVaultName: Default
+       RecoveryPoint: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
+       BackupIAMRoleArn: arn:aws:iam::918404900336:role/service-role/StepFunctions-MyStateMachine-role-f184143f
+       
   LambdaSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -77,6 +78,8 @@ Resources:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
         - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemClientReadWriteAccess'
+   
+  
 
   StateMachineRole:
     Type: 'AWS::IAM::Role'
@@ -93,6 +96,7 @@ Resources:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/AWSBackupFullAccess'
         - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
       Policies:
         - PolicyDocument: |
             {
@@ -112,51 +116,33 @@ Resources:
 
   StateMachine:
     Type: AWS::StepFunctions::StateMachine
+    DependsOn: LambdaSendResponse
     Properties:
-      DefinitionString: |
+      DefinitionString: !Sub |
         {
           "Comment": "A description of my state machine",
-          "StartAt": "Pass",
+          "StartAt": "Choice action",
           "States": {
-            "Pass": {
-              "Type": "Pass",
-              "Next": "Choice action",
-              "Result": {
-                "RequestType": "Create",
-                "ResponseURL": "http://pre-signed-S3-url-for-response",
-                "StackId": "arn:aws:cloudformation:us-west-2:123456789012:stack/stack-name/guid",
-                "RequestId": "unique id for this create request",
-                "ResourceType": "Custom::TestResource",
-                "LogicalResourceId": "MyTestResource",
-                "PhysicalResourceId": "fs-0cf8d9c37a61ae327",
-                "ResourceProperties": {
-                  "RecoveryPoint": "arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe",
-                  "BackupVaultName": "Default",
-                  "BackupIAMRoleArn": "arn:aws:iam::918404900336:role/service-role/StepFunctions-MyStateMachine-role-f184143f"
-                }
-              }
-            },
             "Choice action": {
               "Type": "Choice",
               "Choices": [
                 {
-                  "Variable": "$.RequestType",
+                  "Variable": "$.Request.RequestType",
                   "StringEquals": "Create",
                   "Next": "GetRecoveryPointRestoreMetadata"
                 },
                 {
-                  "Variable": "$.RequestType",
+                  "Variable": "$.Request.RequestType",
                   "StringEquals": "Delete",
                   "Next": "DeleteFileSystem"
                 }
-              ],
-              "Default": "Wait"
+              ]
             },
             "GetRecoveryPointRestoreMetadata": {
               "Type": "Task",
               "Parameters": {
-                "BackupVaultName.$": "$.ResourceProperties.BackupVaultName",
-                "RecoveryPointArn.$": "$.ResourceProperties.RecoveryPoint"
+                "BackupVaultName.$": "$.Request.ResourceProperties.BackupVaultName",
+                "RecoveryPointArn.$": "$.Request.ResourceProperties.RecoveryPoint"
               },
               "Resource": "arn:aws:states:::aws-sdk:backup:getRecoveryPointRestoreMetadata",
               "ResultPath": "$.GetRecoveryPointRestoreMetadataResult",
@@ -165,7 +151,7 @@ Resources:
             "StartRestoreJob": {
               "Type": "Task",
               "Parameters": {
-                "IamRoleArn.$": "$.ResourceProperties.BackupIAMRoleArn",
+                "IamRoleArn.$": "$.Request.ResourceProperties.BackupIAMRoleArn",
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
                   "Encrypted": "false",
@@ -173,7 +159,7 @@ Resources:
                   "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
                   "newFileSystem": "true"
                 },
-                "RecoveryPointArn.$": "$.ResourceProperties.RecoveryPoint",
+                "RecoveryPointArn.$": "$.Request.ResourceProperties.RecoveryPoint",
                 "ResourceType": "EFS"
               },
               "Resource": "arn:aws:states:::aws-sdk:backup:startRestoreJob",
@@ -182,7 +168,7 @@ Resources:
             },
             "Wait for job completed": {
               "Type": "Wait",
-              "Seconds": 10,
+              "Seconds": 30,
               "Next": "DescribeRestoreJob"
             },
             "DescribeRestoreJob": {
@@ -194,66 +180,179 @@ Resources:
               "ResultPath": "$.DescribeRestoreJobResult",
               "Next": "Restore Job Completed?"
             },
-            "Wait": {
-              "Type": "Wait",
-              "Seconds": 5,
-              "End": true
-            },
             "Restore Job Completed?": {
               "Type": "Choice",
               "Choices": [
                 {
                   "Variable": "$.DescribeRestoreJobResult.Status",
                   "StringEquals": "COMPLETED",
-                  "Next": "Wait"
+                  "Next": "Transform arn to efs id"
                 }
               ],
-              "Default": "DescribeRestoreJob"
+              "Default": "Wait for job completed"
+            },
+            "Transform arn to efs id": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${LambdaArnToEfsId}",
+                "Payload": {
+                  "Arn.$": "$.DescribeRestoreJobResult.CreatedResourceArn"
+                }
+              },
+              "ResultPath": "$.TransformArnToEfsIdResult",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Send success created response"
+            },
+            "Send success created response": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${LambdaSendResponse}",
+                "Payload": {
+                  "Request.$": "$.Request",
+                  "ResponseStatus": "SUCCESS",
+                  "PhysicalResourceId.$": "$.TransformArnToEfsIdResult.Payload.EfsId"
+                }
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
             },
             "DeleteFileSystem": {
               "Type": "Task",
               "Parameters": {
-                "FileSystemId.$": "$.PhysicalResourceId"
+                "FileSystemId.$": "$.Request.PhysicalResourceId"
               },
               "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
-              "Next": "Wait",
+              "Next": "Send success deleted response",
               "ResultPath": "$.DeleteFileSystemResult"
+            },
+            "Send success deleted response": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${LambdaSendResponse}",
+                "Payload": {
+                  "Request.$": "$.Request",
+                  "ResponseStatus": "SUCCESS",
+                  "PhysicalResourceId.$": "$.Request.PhysicalResourceId"
+                }
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
             }
           }
-        }
+        } 
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
 
-  RecoveredFileSystemServiceTokenLambda:
+  LambdaStartExecutionStepFunctionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess'
+
+  LambdaStartExecutionStepFunction:
+    Type: 'AWS::Lambda::Function' 
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async(event) => {
+            const AWS = require('aws-sdk');
+            const stepFunctions = new AWS.StepFunctions();
+            const params = {
+                stateMachineArn: process.env.StateMachineArn,
+                input: JSON.stringify({Request: event}),
+                name: event.RequestId
+            };
+            await stepFunctions.startExecution(params).promise();
+          };
+      Environment:
+        Variables:
+          StateMachineArn: !Ref StateMachine
+      Role: !GetAtt LambdaStartExecutionStepFunctionRole.Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
+
+  LambdaArnToEfsId:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
         ZipFile: |
           exports.handler = async (event) => {
-            
-            const response = {
-              statusCode: 200,
-              body: JSON.stringify('Hello from Lambda!'),
+            let match = event.Arn.match(/file-system\/(.+)/) || [];
+            return {
+              EfsId: match[1]
             };
-            return response;
-          };
-      Environment:
-        Variables:
-          RestorePoint: !Ref RestorePoint
-      Role: !GetAtt 
-        - LambdaRole
-        - Arn
+          }
+      Role: !GetAtt LambdaStartExecutionStepFunctionRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
       Timeout: 30
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds:
-          - !Ref Subnet1
+
+  LambdaSendResponse:
+    Type: 'AWS::Lambda::Function' 
+    Properties: 
+      Code:
+        ZipFile: |
+          var response = require('cfn-response');
+          exports.handler = function(event, context) {
+            var responseData = {};
+            response.send(event.Request, context, event.ResponseStatus, responseData, event.PhysicalResourceId);
+          };
+      # Environment:
+      #   Variables:
+      #     StateMachineArn: !Ref StateMachine
+      Role: !GetAtt LambdaStartExecutionStepFunctionRole.Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
 
 
-  Lambda:
+  LambdaMoveBackupFolderToRootEFS:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
@@ -283,7 +382,53 @@ Resources:
         SubnetIds:
           - !Ref Subnet1
 
+  AccessPoint:
+    Type: 'AWS::EFS::AccessPoint'
+    Properties:
+      FileSystemId: !Ref RecoveredFileSystem
+      PosixUser:
+        Gid: 0
+        Uid: 0
+      RootDirectory:
+        Path: /
+
+  SecurityGroupEFS:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow trafic from lambda
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      VpcId: !Ref Vpc
+
+  SecurityGroupEFS2:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow trafic from lambda
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      VpcId: !Ref Vpc    
+  
+  MountTarget:
+    Type: 'AWS::EFS::MountTarget'
+    Properties:
+      FileSystemId: !Ref RecoveredFileSystem
+      SecurityGroups:
+        - !Ref SecurityGroupEFS
+      SubnetId: !Ref Subnet1      
+
+  MountTarget2:
+    Type: 'AWS::EFS::MountTarget'
+    Properties:
+      FileSystemId: !Ref RecoveredFileSystem
+      SecurityGroups:
+        - !Ref SecurityGroupEFS2
+      SubnetId: !Ref Subnet1         
 # Outputs:
 #   Efs:
 #     Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
-
