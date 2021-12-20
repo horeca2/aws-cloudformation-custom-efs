@@ -352,30 +352,40 @@ Resources:
       Timeout: 30
 
 
-  LambdaMoveBackupFolderToRootEFS:
+  LambdaMoveBackupFolder:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
         ZipFile: |
-          exports.handler = async (event) => {
-            const { execSync } = require('child_process');
-            execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', {
-              "cwd": process.env.mountPath});
-            const response = {
-              statusCode: 200,
-              body: JSON.stringify('Hello from Lambda!'),
-            };
-            return response;
+          const { execSync } = require('child_process');
+          var response = require('cfn-response');
+          exports.handler = function (event, context) {            
+            if (event.RequestType == "Create") {
+              try {
+                execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', {
+                  "cwd": process.env.mountPath});       
+                console.log("execSync is ok, sending SUCCESS");
+                response.send(event, context, response.SUCCESS);              
+              } catch(e) {
+                console.log("error execSync, sending FAILED");
+                response.send(event, context, response.FAILED);
+              }    
+            }  
+            else { 
+              console.log("RequestType is not CREATE, send SUCCESS");
+              response.send(event, context, response.SUCCESS);           
+            }
           };
       Environment:
         Variables:
-          RestorePoint: !Ref RestorePoint
-      Role: !GetAtt 
-        - LambdaRole
-        - Arn
+          mountPath: /mnt/efs
+      Role: !GetAtt LambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
       Timeout: 30
+      FileSystemConfigs:
+        - Arn: !GetAtt AccessPoint.Arn
+          LocalMountPath: /mnt/efs
       VpcConfig:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroup
@@ -384,6 +394,7 @@ Resources:
 
   AccessPoint:
     Type: 'AWS::EFS::AccessPoint'
+    DependsOn: MountTarget
     Properties:
       FileSystemId: !Ref RecoveredFileSystem
       PosixUser:
@@ -403,17 +414,6 @@ Resources:
           SourceSecurityGroupId: !Ref LambdaSecurityGroup
       VpcId: !Ref Vpc
 
-  SecurityGroupEFS2:
-    Type: 'AWS::EC2::SecurityGroup'
-    Properties:
-      GroupDescription: Allow trafic from lambda
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 2049
-          ToPort: 2049
-          SourceSecurityGroupId: !Ref LambdaSecurityGroup
-      VpcId: !Ref Vpc    
-  
   MountTarget:
     Type: 'AWS::EFS::MountTarget'
     Properties:
@@ -422,13 +422,10 @@ Resources:
         - !Ref SecurityGroupEFS
       SubnetId: !Ref Subnet1      
 
-  MountTarget2:
-    Type: 'AWS::EFS::MountTarget'
-    Properties:
-      FileSystemId: !Ref RecoveredFileSystem
-      SecurityGroups:
-        - !Ref SecurityGroupEFS2
-      SubnetId: !Ref Subnet1         
+  Moving:
+     Type: Custom::Moving
+     Properties: 
+       ServiceToken: !GetAtt LambdaMoveBackupFolder.Arn
 # Outputs:
 #   Efs:
 #     Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
