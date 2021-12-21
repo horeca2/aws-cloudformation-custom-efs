@@ -1,41 +1,18 @@
 AWSTemplateFormatVersion: 2010-09-09
 Parameters:
-  # BackupPolicyStatus:
-  #   Type: String
-  #   Default: DISABLED 
-  #   AllowedValues:
-  #     - DISABLED
-  #     - ENABLED 
-  # Encrypted:
-  #   Type: String
-  #   Default: false 
-  #   AllowedValues:
-  #     - false
-  #     - true    
-  # PerformanceMode:
-  #   Type: String
-  #   Default: generalPurpose  
-  #   AllowedValues:
-  #     - generalPurpose
-  #     - maxIO
-  # ProvisionedThroughputInMibps:
-  #   Type: String  # ????? BUG ? ?????!!!
-  # ThroughputMode:
-  #   Type: String
-  #   Default: bursting  
-  #   AllowedValues:
-  #     - bursting
-  #     - provisioned
-  RestorePoint:
+  BackupVaultName:
     Type: String
+    Default: Default
+  RecoveryPointArn:
+    Type: String
+    Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
   Vpc:
     Type: AWS::EC2::VPC::Id  
   Subnet1:
     Type: AWS::EC2::Subnet::Id  
 
-
 Conditions:
-  IsEmpty: !Equals [!Ref RestorePoint, '']  
+  IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
        
 Resources:
@@ -50,75 +27,17 @@ Resources:
       ThroughputMode: bursting
   
   RecoveredFileSystem:
-     Type: Custom::RecoveredFileSystem
-     Properties: 
-       ServiceToken: !GetAtt LambdaStartExecutionStepFunction.Arn
-       BackupVaultName: Default
-       RecoveryPoint: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
-       BackupIAMRoleArn: arn:aws:iam::918404900336:role/service-role/StepFunctions-MyStateMachine-role-f184143f
+    Type: Custom::RecoveredFileSystem
+    Properties: 
+      ServiceToken: !GetAtt RunEfsStateMachineLambda.Arn
+      BackupVaultName: !Ref BackupVaultName
+      RecoveryPoint: !Ref RecoveryPointArn
        
-  LambdaSecurityGroup:
-    Type: 'AWS::EC2::SecurityGroup'
-    Properties:
-      GroupDescription: Allow none
-      VpcId: !Ref Vpc
-
-  LambdaRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-            Action:
-              - 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
-        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemClientReadWriteAccess'
-   
-  
-
-  StateMachineRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - states.amazonaws.com
-            Action:
-              - 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/AWSBackupFullAccess'
-        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
-      Policies:
-        - PolicyDocument: |
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "iam:GetRole",
-                            "iam:PassRole"
-                        ],
-                        "Resource": "arn:aws:iam::*:role/*"
-                    }
-                ]
-            }
-          PolicyName: CustomEfsPolicy1
-
-  StateMachine:
+  EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
-    DependsOn: LambdaSendResponse
+    DependsOn: SendResponseLambda
     Properties:
-      DefinitionString: !Sub |
+      DefinitionString: |
         {
           "Comment": "A description of my state machine",
           "StartAt": "Choice action",
@@ -151,7 +70,7 @@ Resources:
             "StartRestoreJob": {
               "Type": "Task",
               "Parameters": {
-                "IamRoleArn.$": "$.Request.ResourceProperties.BackupIAMRoleArn",
+                "IamRoleArn.$": "$.BackupRoleArn",
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
                   "Encrypted": "false",
@@ -195,7 +114,7 @@ Resources:
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName": "${LambdaArnToEfsId}",
+                "FunctionName.$": "$.ArnToEfsIdLambdaName",
                 "Payload": {
                   "Arn.$": "$.DescribeRestoreJobResult.CreatedResourceArn"
                 }
@@ -219,7 +138,7 @@ Resources:
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName": "${LambdaSendResponse}",
+                "FunctionName.$": "$.SendResponseLambdaName",
                 "Payload": {
                   "Request.$": "$.Request",
                   "ResponseStatus": "SUCCESS",
@@ -253,7 +172,7 @@ Resources:
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName": "${LambdaSendResponse}",
+                "FunctionName.$": "$.SendResponseLambdaName",
                 "Payload": {
                   "Request.$": "$.Request",
                   "ResponseStatus": "SUCCESS",
@@ -279,7 +198,13 @@ Resources:
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
 
-  LambdaStartExecutionStepFunctionRole:
+  MoveFolderLambdaSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow none
+      VpcId: !Ref Vpc
+
+  CommonLambdaRole:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -292,9 +217,61 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
+        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemClientReadWriteAccess'
         - 'arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess'
+  
+  BackupRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - backup.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
+   
+  
 
-  LambdaStartExecutionStepFunction:
+  StateMachineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AWSBackupFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaRole'
+      Policies:
+        - PolicyDocument: |
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "iam:GetRole",
+                            "iam:PassRole"
+                        ],
+                        "Resource": "arn:aws:iam::*:role/*"
+                    }
+                ]
+            }
+          PolicyName: CustomEfsPolicy1
+
+  RunEfsStateMachineLambda:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
@@ -304,20 +281,28 @@ Resources:
             const stepFunctions = new AWS.StepFunctions();
             const params = {
                 stateMachineArn: process.env.StateMachineArn,
-                input: JSON.stringify({Request: event}),
+                input: JSON.stringify({
+                  Request: event,
+                  BackupRoleArn: process.env.BackupRoleArn,
+                  ArnToEfsIdLambdaName: process.env.ArnToEfsIdLambdaName,
+                  SendResponseLambdaName: process.env.SendResponseLambdaName
+                }),
                 name: event.RequestId
             };
             await stepFunctions.startExecution(params).promise();
           };
       Environment:
         Variables:
-          StateMachineArn: !Ref StateMachine
-      Role: !GetAtt LambdaStartExecutionStepFunctionRole.Arn
+          StateMachineArn: !Ref EfsStateMachine
+          BackupRoleArn: !GetAtt BackupRole.Arn
+          ArnToEfsIdLambdaName: !Ref ArnToEfsIdLambda
+          SendResponseLambdaName: !Ref SendResponseLambda
+      Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
       Timeout: 30
 
-  LambdaArnToEfsId:
+  ArnToEfsIdLambda:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
@@ -328,12 +313,12 @@ Resources:
               EfsId: match[1]
             };
           }
-      Role: !GetAtt LambdaStartExecutionStepFunctionRole.Arn
+      Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
       Timeout: 30
 
-  LambdaSendResponse:
+  SendResponseLambda:
     Type: 'AWS::Lambda::Function' 
     Properties: 
       Code:
@@ -346,40 +331,27 @@ Resources:
       # Environment:
       #   Variables:
       #     StateMachineArn: !Ref StateMachine
-      Role: !GetAtt LambdaStartExecutionStepFunctionRole.Arn
+      Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
       Timeout: 30
 
 
-  LambdaMoveBackupFolder:
+  MoveFolderLambda:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
         ZipFile: |
           const { execSync } = require('child_process');
-          var response = require('cfn-response');
           exports.handler = function (event, context) {            
-            if (event.RequestType == "Create") {
-              try {
-                execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', {
-                  "cwd": process.env.mountPath});       
-                console.log("execSync is ok, sending SUCCESS");
-                response.send(event, context, response.SUCCESS);              
-              } catch(e) {
-                console.log("error execSync, sending FAILED");
-                response.send(event, context, response.FAILED);
-              }    
-            }  
-            else { 
-              console.log("RequestType is not CREATE, send SUCCESS");
-              response.send(event, context, response.SUCCESS);           
-            }
+                execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', 
+                  {"cwd": process.env.mountPath}
+                );       
           };
       Environment:
         Variables:
           mountPath: /mnt/efs
-      Role: !GetAtt LambdaRole.Arn
+      Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
       Timeout: 30
@@ -388,7 +360,7 @@ Resources:
           LocalMountPath: /mnt/efs
       VpcConfig:
         SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
+          - !Ref MoveFolderLambdaSecurityGroup
         SubnetIds:
           - !Ref Subnet1
 
@@ -403,7 +375,7 @@ Resources:
       RootDirectory:
         Path: /
 
-  SecurityGroupEFS:
+  EfsSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: Allow trafic from lambda
@@ -411,7 +383,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 2049
           ToPort: 2049
-          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          SourceSecurityGroupId: !Ref MoveFolderLambdaSecurityGroup
       VpcId: !Ref Vpc
 
   MountTarget:
@@ -419,13 +391,13 @@ Resources:
     Properties:
       FileSystemId: !Ref RecoveredFileSystem
       SecurityGroups:
-        - !Ref SecurityGroupEFS
+        - !Ref EfsSecurityGroup
       SubnetId: !Ref Subnet1      
 
-  Moving:
-     Type: Custom::Moving
-     Properties: 
-       ServiceToken: !GetAtt LambdaMoveBackupFolder.Arn
+  # Moving:
+  #    Type: Custom::Moving
+  #    Properties: 
+  #      ServiceToken: !GetAtt MoveFolderLambda.Arn
 # Outputs:
 #   Efs:
 #     Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
