@@ -12,7 +12,10 @@ Parameters:
   #   Type:  
   Subnet1:
     Type: AWS::EC2::Subnet::Id  
-
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  SourceSequrityGroups:
+    Type: List<AWS::EC2::SecurityGroup::Id>  
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
@@ -528,8 +531,8 @@ Resources:
     Type: 'AWS::EFS::MountTarget'
     Properties:
       FileSystemId: !Ref RecoveredEfs
-      SecurityGroups:
-        - !Ref EfsSecurityGroup
+      SecurityGroups: [!Join [ ",", [ !Join [ ",", !Ref SourceSequrityGroups], !Ref EfsSecurityGroup ] ]]
+        # - !Ref EfsSecurityGroup
       SubnetId: !Ref Subnet1      
 
   # Moving:
