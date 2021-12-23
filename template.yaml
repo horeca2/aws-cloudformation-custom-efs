@@ -8,6 +8,8 @@ Parameters:
     Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
   Vpc:
     Type: AWS::EC2::VPC::Id  
+  # SourceSecurityGroupId:
+  #   Type:  
   Subnet1:
     Type: AWS::EC2::Subnet::Id  
 
@@ -16,7 +18,7 @@ Conditions:
   IsRestore: !Not [!Condition IsEmpty]  
        
 Resources:
-  EmptyFileSystem:
+  EmptyEfs:
     Type: AWS::EFS::FileSystem
     Condition: IsEmpty
     Properties:
@@ -26,16 +28,21 @@ Resources:
       PerformanceMode: generalPurpose
       ThroughputMode: bursting
   
-  RecoveredFileSystem:
-    Type: Custom::RecoveredFileSystem
+  RecoveredEfs:
+    Type: Custom::RecoveredEfs
     Properties: 
       ServiceToken: !GetAtt RunEfsStateMachineLambda.Arn
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
+ 
+  FixingEfs:
+    Type: Custom::FixingEfs
+    DependsOn: RecoveredEfs
+    Properties: 
+      ServiceToken: !GetAtt RunFixStateMachineLambda.Arn
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
-    DependsOn: SendResponseLambda
     Properties:
       DefinitionString: |
         {
@@ -197,8 +204,111 @@ Resources:
         } 
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
+  
+  FixStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: |
+        {
+          "Comment": "A description of my state machine",
+          "StartAt": "Choise Request type",
+          "States": {
+            "Choise Request type": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.Request.RequestType",
+                  "StringEquals": "Create",
+                  "Next": "Fix"
+                }
+              ],
+              "Default": "Send success response"
+            },
+            "Fix": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName.$": "$.FixLambdaName"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Send success response",
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "Next": "Send failed response"
+                }
+              ],
+              "ResultPath": "$.FixResult"
+            },
+            "Send success response": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "FunctionName.$": "$.SendResponseLambdaName",
+                "Payload": {
+                  "Request.$": "$.Request",
+                  "ResponseStatus": "SUCCESS"
+                }
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            },
+            "Send failed response": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload": {
+                  "Request.$": "$.Request",
+                  "ResponseStatus": "FAILED"
+                },
+                "FunctionName.$": "$.SendResponseLambdaName"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
+            }
+          }
+        } 
+      # DefinitionSubstitutions:  
+      RoleArn: !GetAtt StateMachineRole.Arn
 
-  MoveFolderLambdaSecurityGroup:
+  FixLambdaSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: Allow none
@@ -236,8 +346,6 @@ Resources:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
    
-  
-
   StateMachineRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -302,6 +410,36 @@ Resources:
       Handler: index.handler
       Timeout: 30
 
+  RunFixStateMachineLambda:
+    Type: 'AWS::Lambda::Function' 
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async(event) => {
+            const AWS = require('aws-sdk');
+            const stepFunctions = new AWS.StepFunctions();
+            const params = {
+                stateMachineArn: process.env.StateMachineArn,
+                input: JSON.stringify({
+                  Request: event,
+                  SendResponseLambdaName: process.env.SendResponseLambdaName,
+                  FixLambdaName: process.env.FixLambdaName
+                }),
+                name: event.RequestId
+            };
+            await stepFunctions.startExecution(params).promise();
+          };
+      Environment:
+        Variables:
+          StateMachineArn: !Ref FixStateMachine
+          SendResponseLambdaName: !Ref SendResponseLambda
+          FixLambdaName: !Ref FixLambda
+      Role: !GetAtt CommonLambdaRole.Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
+
+  # Converts arn of the restored resource to file system id. 
   ArnToEfsIdLambda:
     Type: 'AWS::Lambda::Function' 
     Properties:
@@ -337,7 +475,7 @@ Resources:
       Timeout: 30
 
 
-  MoveFolderLambda:
+  FixLambda:
     Type: 'AWS::Lambda::Function' 
     Properties:
       Code:
@@ -360,7 +498,7 @@ Resources:
           LocalMountPath: /mnt/efs
       VpcConfig:
         SecurityGroupIds:
-          - !Ref MoveFolderLambdaSecurityGroup
+          - !Ref FixLambdaSecurityGroup
         SubnetIds:
           - !Ref Subnet1
 
@@ -368,7 +506,7 @@ Resources:
     Type: 'AWS::EFS::AccessPoint'
     DependsOn: MountTarget
     Properties:
-      FileSystemId: !Ref RecoveredFileSystem
+      FileSystemId: !Ref RecoveredEfs
       PosixUser:
         Gid: 0
         Uid: 0
@@ -383,13 +521,13 @@ Resources:
         - IpProtocol: tcp
           FromPort: 2049
           ToPort: 2049
-          SourceSecurityGroupId: !Ref MoveFolderLambdaSecurityGroup
+          SourceSecurityGroupId: !Ref FixLambdaSecurityGroup
       VpcId: !Ref Vpc
 
   MountTarget:
     Type: 'AWS::EFS::MountTarget'
     Properties:
-      FileSystemId: !Ref RecoveredFileSystem
+      FileSystemId: !Ref RecoveredEfs
       SecurityGroups:
         - !Ref EfsSecurityGroup
       SubnetId: !Ref Subnet1      
