@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters: 
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro 
+  ImageId:
+    Description: AMI
+    Type: AWS::EC2::Image::Id
+    Default: ami-058e6df85cfc7760b
+  KeyName:
+    Description: Key pair. Must be created manualy
+    Type: AWS::EC2::KeyPair::KeyName    
+  Vpc:
+    Type: AWS::EC2::VPC::Id    
+  Subnet:
+    Type: AWS::EC2::Subnet::Id   
+  BackupVaultName:
+    Type: String
+    Default: Default
+  RecoveryPointArn:
+    Type: String
+    Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
+  TemplateURL:
+    Type: String
+    MinLength: 1   
+    Default: https://s3.eu-central-1.amazonaws.com/aos.bucket/template.yaml
+    Description: URL to template.yaml. Must be to S3
+
+Resources:
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:       
+        ImageId: !Ref ImageId       
+        InstanceType: !Ref InstanceType     
+        KeyName: !Ref KeyName       
+        SecurityGroupIds:  
+          - !Ref EC2SecurityGroup  
+        UserData: !Base64 
+          Fn::Sub: 
+            - |
+              #!/bin/bash
+              yum update -y
+              # Install the files and packages from the metadata
+              mkdir /home/ec2-user/efs 
+              mount -t efs -o tls,accesspoint=${AccessPoint} ${EFS}:/ /home/ec2-user/efs            
+            - EFS: !GetAtt EfsStack.Outputs.Efs   
+  
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH trafic      
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0        
+      VpcId: !Ref Vpc
+  
+  EfsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow trafic from EC2SecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      VpcId: !Ref Vpc
+        
+  EfsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        BackupVaultName: !Ref BackupVaultName
+        RecoveryPointArn: !Ref RecoveryPointArn
+        Subnet: !Ref Subnet
+        SecurityGroup: !Ref EfsSecurityGroup 
+        Vpc: !Ref Vpc
+      TemplateURL: !Ref TemplateURL
+
+  AccessPoint:
+    Type: 'AWS::EFS::AccessPoint'
+    Properties:
+      FileSystemId: !GetAtt EfsStack.Outputs.Efs
+      # Give full access. "0" is root user
+      PosixUser:
+        Gid: 0
+        Uid: 0
+      RootDirectory:
+        Path: /    
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    # CreationPolicy:
+    #   ResourceSignal:
+    #     Timeout: PT5M
+    Properties:       
+      DesiredCapacity: 1     
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate    
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MaxSize: 1
+      MinSize: 1    
+      # TargetGroupARNs:
+      #   - !Ref TargetGroup         
+      VPCZoneIdentifier: # A list of subnet IDs for a virtual private cloud (VPC) where instances in the Auto Scaling group can be created
+        - !Ref Subnet  
+  
+  # AutoscalingGroup регистрирует созданные инстансы в TargetGroup
+  # TargetGroup:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:          
+  #     Protocol: HTTP 
+  #     Port: 80
+  #     VpcId: !Ref Vpc   

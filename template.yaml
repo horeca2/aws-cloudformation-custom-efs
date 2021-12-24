@@ -8,14 +8,12 @@ Parameters:
     Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
   Vpc:
     Type: AWS::EC2::VPC::Id  
-  # SourceSecurityGroupId:
-  #   Type:  
-  Subnet1:
+  Subnet:
     Type: AWS::EC2::Subnet::Id  
-  Subnets:
-    Type: List<AWS::EC2::Subnet::Id>
-  SourceSequrityGroups:
-    Type: List<AWS::EC2::SecurityGroup::Id>  
+  # SourceSequrityGroups:
+  #   Type: List<AWS::EC2::SecurityGroup::Id>  
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id  
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
@@ -33,6 +31,7 @@ Resources:
   
   RecoveredEfs:
     Type: Custom::RecoveredEfs
+    Condition: IsRestore
     Properties: 
       ServiceToken: !GetAtt RunEfsStateMachineLambda.Arn
       BackupVaultName: !Ref BackupVaultName
@@ -40,12 +39,14 @@ Resources:
  
   FixingEfs:
     Type: Custom::FixingEfs
+    Condition: IsRestore
     DependsOn: RecoveredEfs
     Properties: 
       ServiceToken: !GetAtt RunFixStateMachineLambda.Arn
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
+    Condition: IsRestore
     Properties:
       DefinitionString: |
         {
@@ -210,6 +211,7 @@ Resources:
   
   FixStateMachine:
     Type: AWS::StepFunctions::StateMachine
+    Condition: IsRestore
     Properties:
       DefinitionString: |
         {
@@ -313,12 +315,14 @@ Resources:
 
   FixLambdaSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
+    Condition: IsRestore
     Properties:
       GroupDescription: Allow none
       VpcId: !Ref Vpc
 
   CommonLambdaRole:
     Type: 'AWS::IAM::Role'
+    Condition: IsRestore
     Properties:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -336,6 +340,7 @@ Resources:
   
   BackupRole:
     Type: 'AWS::IAM::Role'
+    Condition: IsRestore
     Properties:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -351,6 +356,7 @@ Resources:
    
   StateMachineRole:
     Type: 'AWS::IAM::Role'
+    Condition: IsRestore
     Properties:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -384,6 +390,7 @@ Resources:
 
   RunEfsStateMachineLambda:
     Type: 'AWS::Lambda::Function' 
+    Condition: IsRestore
     Properties:
       Code:
         ZipFile: |
@@ -415,6 +422,7 @@ Resources:
 
   RunFixStateMachineLambda:
     Type: 'AWS::Lambda::Function' 
+    Condition: IsRestore
     Properties:
       Code:
         ZipFile: |
@@ -445,6 +453,7 @@ Resources:
   # Converts arn of the restored resource to file system id. 
   ArnToEfsIdLambda:
     Type: 'AWS::Lambda::Function' 
+    Condition: IsRestore
     Properties:
       Code:
         ZipFile: |
@@ -461,6 +470,7 @@ Resources:
 
   SendResponseLambda:
     Type: 'AWS::Lambda::Function' 
+    Condition: IsRestore
     Properties: 
       Code:
         ZipFile: |
@@ -480,6 +490,7 @@ Resources:
 
   FixLambda:
     Type: 'AWS::Lambda::Function' 
+    Condition: IsRestore
     Properties:
       Code:
         ZipFile: |
@@ -503,13 +514,17 @@ Resources:
         SecurityGroupIds:
           - !Ref FixLambdaSecurityGroup
         SubnetIds:
-          - !Ref Subnet1
+          - !Ref Subnet
 
+  # Access point for fix lambda function. 
   AccessPoint:
     Type: 'AWS::EFS::AccessPoint'
-    DependsOn: MountTarget
+    Condition: IsRestore
+    # Wait while MountTarget is created
+    DependsOn: RecoveredEfsMountTarget
     Properties:
       FileSystemId: !Ref RecoveredEfs
+      # Give full access. "0" is root user
       PosixUser:
         Gid: 0
         Uid: 0
@@ -518,6 +533,7 @@ Resources:
 
   EfsSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
+    Condition: IsRestore
     Properties:
       GroupDescription: Allow trafic from lambda
       SecurityGroupIngress:
@@ -527,18 +543,27 @@ Resources:
           SourceSecurityGroupId: !Ref FixLambdaSecurityGroup
       VpcId: !Ref Vpc
 
-  MountTarget:
+  RecoveredEfsMountTarget:
     Type: 'AWS::EFS::MountTarget'
+    Condition: IsRestore
     Properties:
       FileSystemId: !Ref RecoveredEfs
-      SecurityGroups: [!Join [ ",", [ !Join [ ",", !Ref SourceSequrityGroups], !Ref EfsSecurityGroup ] ]]
-        # - !Ref EfsSecurityGroup
-      SubnetId: !Ref Subnet1      
+      # Append EfsSecurityGroup to array
+      # SecurityGroups: !Split [",", !Join [ ",", [ !Join [ ",", !Ref SourceSequrityGroups], !Ref EfsSecurityGroup ] ]]
+      SecurityGroups:
+        - !Ref EfsSecurityGroup
+        - !Ref SecurityGroup
+      SubnetId: !Ref Subnet     
+  
+  EmptyEfsMountTarget:
+    Type: 'AWS::EFS::MountTarget'
+    Condition: IsEmpty
+    Properties:
+      FileSystemId: !Ref EmptyEfs
+      SecurityGroups: 
+        - !Ref SecurityGroup
+      SubnetId: !Ref Subnet     
 
-  # Moving:
-  #    Type: Custom::Moving
-  #    Properties: 
-  #      ServiceToken: !GetAtt MoveFolderLambda.Arn
-# Outputs:
-#   Efs:
-#     Value: !If [IsEmpty, !Ref EmptyFileSystem, !Ref "AWS::NoValue"]
+Outputs:
+  Efs:
+    Value: !If [IsEmpty, !Ref EmptyEfs, !Ref RecoveredEfs]
