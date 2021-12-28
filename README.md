@@ -82,7 +82,7 @@ Required: Yes
 
 Type: String
 
-To update you need:?
+Updating requires: ?
 
 ## Return values
 
@@ -109,77 +109,77 @@ Type: AWS::CloudFormation::Stack
       Vpc: String
       TemplateURL: String
 ```
-> К сожалению на данный момент решение поддерживает не все свойства AWS::EFS::FileSystem которые вы можете найти здесь https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html. Если вы не видите какого то свойства, значит оно не поддерживается или установлено в значение по умолчанию и не может быть изменено. Запрашивайте свойства в issues.
+> Unfortunately, at the moment the solution does not support all AWS :: EFS :: FileSystem properties which you can find here https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html ... If you do not see a property, then it is not supported or is set to its default value and cannot be changed. Request properties in issues.
 
-## Свойства
+## Properties
 
-### BackupVaultName 
-Название хранилища в котором хранится резервная копия
+### BackupVaultName
+The name of the storage where the backup is stored
 
-Обязательно: Да, если задан RecoveryPointArn
+Required: Yes, if RecoveryPointArn is set
 
-Тип: Строка
+Type: String
 
-Для обновления требуется: Замена
+Updating requires: Replacement
 
-### RecoveryPointArn 
-Arn точки восстановления. Если этот параметр равен пустой строке, то будет создана пустая фаловая система.
-Чтобы понять, как это работает и для чего предназначено свойство RecoveryPointArn, см. описание свойства DBSnapshotIdentifier в документации RDS. Поведение аналогично
+### RecoveryPointArn
+Arn restore points. If this parameter is equal to an empty string, then an empty file system will be created.
+To understand how this works and what the RecoveryPointArn property is for, see the description of the DBSnapshotIdentifier property in the RDS documentation. Behavior is similar
 https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-rds-database-instance.html#cfn-rds-dbinstance-dbsnapshotidentifier
 
-Обязательно: Нет
+Required: No
 
-Тип: Строка
+Type: String
 
-Для обновления требуется: Замена
+Updating requires: Replacement
 
 ### Vpc
-Идентификатор VPC, например vpc-a123baa3. В этой VPC будет создана цель монтирования
+VPC ID, for example vpc-a123baa3. A mount target will be created in this VPC
 
-Обязательно: Да
+Required: Yes
 
-Тип: Строка
+Type: String
 
-Для обновления требуется: Замена
+Updating requires: Replacement
 
-### Subnet 
-В этой подсети будет создана цель монтирования. Подсеть должна принадлежать указанной ранее VPC 
+### Subnet
+A mount target will be created on this subnet. The subnet must belong to the previously specified VPC
 
-Обязательно: Да
+Required: Yes
 
-Тип: Строка
+Type: String
 
-Для обновления требуется: Замена
+Updating requires: Replacement
 
-### SecurityGroup 
-Группа безопасности которая используется целью монтирования. Группа безопасности должна принадлежать указанной ранее VPC 
+### SecurityGroup
+The security group used by the mount target. The security group must belong to the previously specified VPC
 
-Обязательно: Да
+Required: Yes
 
-Тип: Строка
+Type: String
 
-Для обновления требуется: Замена
+Updating requires: Replacement
 
-### TemplateURL 
-Расположение файла, содержащего тело шаблона. URL-адрес должен указывать на шаблон расположенный в корзине Amazon S3. Скопируйте файл template.yaml в свою корзину и укажите здесь ссылку на него.
+### TemplateURL
+The location of the file containing the body of the template. The URL must point to the template located in the Amazon S3 bucket. Copy the template.yaml file to your cart and link to it here.
 
-Обязательно: Да
+Required: Yes
 
-Тип: Строка
+Type: String
 
-Для обновления требуется: ?
+To update you need:?
 
-## Возвращаемые значения
+## Return values
 
 ### Fn :: GetAtt
-Внутренняя функция возвращает значение для указанного атрибута этого типа. Ниже приведены доступные атрибуты и примеры возвращаемых значений.
+An inner function returns the value for the specified attribute of this type. The available attributes and examples of return values ​​are shown below.
 
 #### Outputs.Efs
-Идентификатор файловой системы, например, fs-06799d63c3aeb4707
+Filesystem identifier, e.g. fs-06799d63c3aeb4707
 
-## Примеры
+## Examples
 
-Следующий образец шаблона монтирует файловую систему к EC2 инстансу. В любой момент вы можете изменить параметры шаблона BackupVaultName и RecoveryPointArn и тогда CloudFormation восстановит Вашу файловую систему из резервной копии, создаст новый инстанс EC2 и смонтирует к нему восстановленную файловую систему. Затем старая фаловая систему и старый инстанс благополучно удалятся. Великолепно, правда? =)
+The following sample template mounts a filesystem to an EC2 instance. At any time, you can change the parameters of the BackupVaultName and RecoveryPointArn templates, and then CloudFormation will restore your file system from a backup, create a new EC2 instance and mount the restored file system to it. Then the old file system and the old instance will be safely removed. Great, isn't it? =)
 
 ``` YAML
 AWSTemplateFormatVersion: 2010-09-09
