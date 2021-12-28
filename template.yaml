@@ -43,6 +43,8 @@ Resources:
     DependsOn: RecoveredEfs
     Properties: 
       ServiceToken: !GetAtt RunFixStateMachineLambda.Arn
+      BackupVaultName: !Ref BackupVaultName
+      RecoveryPoint: !Ref RecoveryPointArn
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -57,8 +59,36 @@ Resources:
               "Type": "Choice",
               "Choices": [
                 {
-                  "Variable": "$.Request.RequestType",
-                  "StringEquals": "Create",
+                  "Or": [
+                    {
+                      "Variable": "$.Request.RequestType",
+                      "StringEquals": "Create"
+                    },
+                    {
+                      "And": [
+                        {
+                          "Variable": "$.Request.RequestType",
+                          "StringEquals": "Update"
+                        },
+                        {
+                          "Or": [
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.BackupVaultName",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.BackupVaultName"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.RecoveryPoint",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.RecoveryPoint"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
                   "Next": "GetRecoveryPointRestoreMetadata"
                 },
                 {
@@ -205,7 +235,7 @@ Resources:
               "End": true
             }
           }
-        } 
+        }
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
   
@@ -222,8 +252,36 @@ Resources:
               "Type": "Choice",
               "Choices": [
                 {
-                  "Variable": "$.Request.RequestType",
-                  "StringEquals": "Create",
+                  "Or": [
+                    {
+                      "Variable": "$.Request.RequestType",
+                      "StringEquals": "Create"
+                    },
+                    {
+                      "And": [
+                        {
+                          "Variable": "$.Request.RequestType",
+                          "StringEquals": "Update"
+                        },
+                        {
+                          "Or": [
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.BackupVaultName",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.BackupVaultName"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.RecoveryPoint",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.RecoveryPoint"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
                   "Next": "Fix"
                 }
               ],
@@ -309,7 +367,7 @@ Resources:
               "End": true
             }
           }
-        } 
+        }
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
 
@@ -497,6 +555,12 @@ Resources:
           const { execSync } = require('child_process');
           exports.handler = function (event, context) {            
                 execSync('shopt -s dotglob \n mv aws-backup-restore_*/* .', 
+                  {"cwd": process.env.mountPath}
+                );       
+                execSync('rm -d aws-backup-lost+found_*', 
+                  {"cwd": process.env.mountPath}
+                );       
+                execSync('rm -d aws-backup-restore_*', 
                   {"cwd": process.env.mountPath}
                 );       
           };

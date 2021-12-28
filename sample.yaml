@@ -26,7 +26,7 @@ Parameters:
     Type: String
     MinLength: 1   
     Default: https://s3.eu-central-1.amazonaws.com/aos.bucket/template.yaml
-    Description: URL to template.yaml. Must be to S3
+    Description: URL for template.yaml. Should be in S3 
 
 Resources:
   LaunchTemplate:
@@ -44,9 +44,10 @@ Resources:
               #!/bin/bash
               yum update -y
               # Install the files and packages from the metadata
+              yum install -y amazon-efs-utils
               mkdir /home/ec2-user/efs 
               mount -t efs -o tls,accesspoint=${AccessPoint} ${EFS}:/ /home/ec2-user/efs            
-            - EFS: !GetAtt EfsStack.Outputs.Efs   
+            - EFS: !GetAtt Efs.Outputs.Efs   
   
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -70,7 +71,7 @@ Resources:
           SourceSecurityGroupId: !Ref EC2SecurityGroup
       VpcId: !Ref Vpc
         
-  EfsStack:
+  Efs:
     Type: AWS::CloudFormation::Stack
     Properties:
       Parameters:
@@ -84,35 +85,19 @@ Resources:
   AccessPoint:
     Type: 'AWS::EFS::AccessPoint'
     Properties:
-      FileSystemId: !GetAtt EfsStack.Outputs.Efs
+      FileSystemId: !GetAtt Efs.Outputs.Efs
       # Give full access. "0" is root user
       PosixUser:
         Gid: 0
         Uid: 0
       RootDirectory:
         Path: /    
-
-  AutoScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
-    # CreationPolicy:
-    #   ResourceSignal:
-    #     Timeout: PT5M
-    Properties:       
-      DesiredCapacity: 1     
+  
+  Ec2Instance: 
+    Type: AWS::EC2::Instance
+    Properties: 
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate    
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
-      MaxSize: 1
-      MinSize: 1    
-      # TargetGroupARNs:
-      #   - !Ref TargetGroup         
-      VPCZoneIdentifier: # A list of subnet IDs for a virtual private cloud (VPC) where instances in the Auto Scaling group can be created
-        - !Ref Subnet  
+      SubnetId: !Ref Subnet
   
-  # AutoscalingGroup регистрирует созданные инстансы в TargetGroup
-  # TargetGroup:
-  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
-  #   Properties:          
-  #     Protocol: HTTP 
-  #     Port: 80
-  #     VpcId: !Ref Vpc   
