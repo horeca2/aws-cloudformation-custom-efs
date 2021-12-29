@@ -14,6 +14,13 @@ Parameters:
   #   Type: List<AWS::EC2::SecurityGroup::Id>  
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup::Id  
+  PerformanceMode:
+    Type: String
+    AllowedValues:
+      - generalPurpose
+      - maxIO
+    Default: generalPurpose
+           
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
@@ -26,7 +33,7 @@ Resources:
       BackupPolicy:
         Status: DISABLED
       Encrypted: "false"
-      PerformanceMode: generalPurpose
+      PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
   
   RecoveredEfs:
@@ -115,7 +122,7 @@ Resources:
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
                   "Encrypted": "false",
-                  "PerformanceMode": "generalPurpose",
+                  "PerformanceMode.$": "$.PerformanceMode",
                   "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
                   "newFileSystem": "true"
                 },
@@ -462,6 +469,7 @@ Resources:
                   BackupRoleArn: process.env.BackupRoleArn,
                   ArnToEfsIdLambdaName: process.env.ArnToEfsIdLambdaName,
                   SendResponseLambdaName: process.env.SendResponseLambdaName
+                  PerformanceMode: process.env.PerformanceMode
                 }),
                 name: event.RequestId
             };
@@ -473,6 +481,7 @@ Resources:
           BackupRoleArn: !GetAtt BackupRole.Arn
           ArnToEfsIdLambdaName: !Ref ArnToEfsIdLambda
           SendResponseLambdaName: !Ref SendResponseLambda
+          PerformanceMode: !Ref PerformanceMode
       Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
