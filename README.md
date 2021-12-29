@@ -20,6 +20,7 @@ Type: AWS::CloudFormation::Stack
       SecurityGroup: String
       Vpc: String
       TemplateURL: String
+      PerformanceMode: String
 ```
 
 > Unfortunately, at the moment the solution does not support all AWS :: EFS :: FileSystem properties which you can find here https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html ... If you do not see a property, then it is not supported or is set to its default value and cannot be changed. Request properties in issues.
@@ -81,6 +82,17 @@ Required: Yes
 Type: String
 
 To update you need:?
+
+### PerformanceMode
+The performance mode of the file system. We recommend generalPurpose performance mode for most file systems. File systems using the maxIO performance mode can scale to higher levels of aggregate throughput and operations per second with a tradeoff of slightly higher latencies for most file operations. The performance mode can't be changed after the file system has been created.
+
+Required: No
+
+Type: String
+
+Allowed values: generalPurpose | maxIO
+
+Update requires: Replacement
 
 ## Return values
 
@@ -176,6 +188,7 @@ Resources:
         Subnet: !Ref Subnet
         SecurityGroup: !Ref EfsSecurityGroup 
         Vpc: !Ref Vpc
+        PerformanceMode: generalPurpose
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
