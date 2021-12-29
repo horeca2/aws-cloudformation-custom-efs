@@ -27,7 +27,12 @@ Parameters:
     MinLength: 1   
     Default: https://s3.eu-central-1.amazonaws.com/aos.bucket/template.yaml
     Description: URL for template.yaml. Should be in S3 
-
+  PerformanceMode:
+    Type: String
+    AllowedValues:
+      - generalPurpose
+      - maxIO
+    Default: generalPurpose  
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -43,7 +48,6 @@ Resources:
             - |
               #!/bin/bash
               yum update -y
-              # Install the files and packages from the metadata
               yum install -y amazon-efs-utils
               mkdir /home/ec2-user/efs 
               mount -t efs -o tls,accesspoint=${AccessPoint} ${EFS}:/ /home/ec2-user/efs            
@@ -80,6 +84,7 @@ Resources:
         Subnet: !Ref Subnet
         SecurityGroup: !Ref EfsSecurityGroup 
         Vpc: !Ref Vpc
+        PerformanceMode: !Ref PerformanceMode
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:

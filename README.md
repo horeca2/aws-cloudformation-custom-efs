@@ -20,6 +20,7 @@ Type: AWS::CloudFormation::Stack
       SecurityGroup: String
       Vpc: String
       TemplateURL: String
+      PerformanceMode: String
 ```
 
 > Unfortunately, at the moment the solution does not support all AWS :: EFS :: FileSystem properties which you can find here https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html ... If you do not see a property, then it is not supported or is set to its default value and cannot be changed. Request properties in issues.
@@ -187,6 +188,7 @@ Resources:
         Subnet: !Ref Subnet
         SecurityGroup: !Ref EfsSecurityGroup 
         Vpc: !Ref Vpc
+        PerformanceMode: generalPurpose
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
