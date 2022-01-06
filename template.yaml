@@ -143,7 +143,7 @@ Resources:
                 "IamRoleArn.$": "$.BackupRoleArn",
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
-                  "Encrypted": "$.Request.ResourceProperties.Encrypted",
+                  "Encrypted.$": "$.Request.ResourceProperties.Encrypted",
                   "PerformanceMode.$": "$.Request.ResourceProperties.PerformanceMode",
                   "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
                   "newFileSystem": "true"

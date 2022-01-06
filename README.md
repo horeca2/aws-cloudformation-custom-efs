@@ -81,7 +81,7 @@ Required: Yes
 
 Type: String
 
-To update you need:?
+Update requires: ?
 
 ### PerformanceMode
 The performance mode of the file system. We recommend generalPurpose performance mode for most file systems. File systems using the maxIO performance mode can scale to higher levels of aggregate throughput and operations per second with a tradeoff of slightly higher latencies for most file operations. The performance mode can't be changed after the file system has been created.
@@ -91,6 +91,15 @@ Required: No
 Type: String
 
 Allowed values: generalPurpose | maxIO
+
+Update requires: Replacement
+
+### Encrypted
+A Boolean value that, if true, creates an encrypted file system. KmsKeyId not support now, the default KMS key for Amazon EFS, /aws/elasticfilesystem, is used to protect the encrypted file system.
+
+Required: No
+
+Type: Boolean
 
 Update requires: Replacement
 
