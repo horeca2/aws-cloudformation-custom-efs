@@ -53,7 +53,7 @@ Resources:
       ServiceToken: !GetAtt RunFixStateMachineLambda.Arn
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
-      # ДОБАВИТЬ СЮДА PerformanceMode а то при обновлении не вызывается
+      PerformanceMode: !Ref PerformanceMode
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -290,6 +290,12 @@ Resources:
                               "Not": {
                                 "Variable": "$.Request.ResourceProperties.RecoveryPoint",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.RecoveryPoint"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.PerformanceMode",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
                               }
                             }
                           ]
