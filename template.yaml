@@ -20,6 +20,14 @@ Parameters:
       - generalPurpose
       - maxIO
     Default: generalPurpose
+  Encrypted:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+  KmsKeyId:
+    Type: String
            
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
@@ -32,9 +40,10 @@ Resources:
     Properties:
       BackupPolicy:
         Status: DISABLED
-      Encrypted: "false"
       PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
+      Encrypted: !Ref Encrypted
+      KmsKeyId: !Ref KmsKeyId
   
   RecoveredEfs:
     Type: Custom::RecoveredEfs
@@ -44,6 +53,8 @@ Resources:
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
       PerformanceMode: !Ref PerformanceMode
+      Encrypted: !Ref Encrypted
+      KmsKeyId: !Ref KmsKeyId
  
   FixingEfs:
     Type: Custom::FixingEfs
@@ -54,6 +65,8 @@ Resources:
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
       PerformanceMode: !Ref PerformanceMode
+      Encrypted: !Ref Encrypted
+      KmsKeyId: !Ref KmsKeyId
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -98,6 +111,18 @@ Resources:
                                 "Variable": "$.Request.ResourceProperties.PerformanceMode",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
                               }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.Encrypted",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.Encrypted"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.KmsKeyId",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.KmsKeyId"
+                              }
                             }
                           ]
                         }
@@ -129,7 +154,8 @@ Resources:
                 "IamRoleArn.$": "$.BackupRoleArn",
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
-                  "Encrypted": "false",
+                  "Encrypted.$": "$.Request.ResourceProperties.Encrypted",
+                  "KmsKeyId.$": "$.Request.ResourceProperties.KmsKeyId",
                   "PerformanceMode.$": "$.Request.ResourceProperties.PerformanceMode",
                   "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
                   "newFileSystem": "true"
@@ -296,6 +322,18 @@ Resources:
                               "Not": {
                                 "Variable": "$.Request.ResourceProperties.PerformanceMode",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.Encrypted",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.Encrypted"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.KmsKeyId",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.KmsKeyId"
                               }
                             }
                           ]
