@@ -20,6 +20,12 @@ Parameters:
       - generalPurpose
       - maxIO
     Default: generalPurpose
+  Encrypted:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
            
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
@@ -32,7 +38,7 @@ Resources:
     Properties:
       BackupPolicy:
         Status: DISABLED
-      Encrypted: "false"
+      Encrypted: !Ref Encrypted
       PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
   
@@ -44,6 +50,7 @@ Resources:
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
       PerformanceMode: !Ref PerformanceMode
+      Encrypted: !Ref Encrypted
  
   FixingEfs:
     Type: Custom::FixingEfs
@@ -54,6 +61,7 @@ Resources:
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
       PerformanceMode: !Ref PerformanceMode
+      Encrypted: !Ref Encrypted
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -98,6 +106,12 @@ Resources:
                                 "Variable": "$.Request.ResourceProperties.PerformanceMode",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
                               }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.Encrypted",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.Encrypted"
+                              }
                             }
                           ]
                         }
@@ -129,7 +143,7 @@ Resources:
                 "IamRoleArn.$": "$.BackupRoleArn",
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
-                  "Encrypted": "false",
+                  "Encrypted": "$.Request.ResourceProperties.Encrypted",
                   "PerformanceMode.$": "$.Request.ResourceProperties.PerformanceMode",
                   "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
                   "newFileSystem": "true"
@@ -296,6 +310,12 @@ Resources:
                               "Not": {
                                 "Variable": "$.Request.ResourceProperties.PerformanceMode",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.Encrypted",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.Encrypted"
                               }
                             }
                           ]

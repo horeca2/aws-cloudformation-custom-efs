@@ -33,6 +33,12 @@ Parameters:
       - generalPurpose
       - maxIO
     Default: generalPurpose  
+  Encrypted:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"  
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -85,6 +91,7 @@ Resources:
         SecurityGroup: !Ref EfsSecurityGroup 
         Vpc: !Ref Vpc
         PerformanceMode: !Ref PerformanceMode
+        Encrypted: !Ref Encrypted
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
