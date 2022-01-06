@@ -21,6 +21,9 @@ Type: AWS::CloudFormation::Stack
       Vpc: String
       TemplateURL: String
       PerformanceMode: String
+      Encrypted: Boolean
+      KmsKeyId: String
+
 ```
 
 > Unfortunately, at the moment the solution does not support all AWS :: EFS :: FileSystem properties which you can find here https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html ... If you do not see a property, then it is not supported or is set to its default value and cannot be changed. Request properties in issues.
@@ -95,11 +98,24 @@ Allowed values: generalPurpose | maxIO
 Update requires: Replacement
 
 ### Encrypted
-A Boolean value that, if true, creates an encrypted file system. KmsKeyId not support now, the default KMS key for Amazon EFS, /aws/elasticfilesystem, is used to protect the encrypted file system.
+A Boolean value that, if true, creates an encrypted file system. When creating an encrypted file system, you must specifying a KmsKeyId for an existing AWS KMS key. 
 
 Required: No
 
 Type: Boolean
+
+Update requires: Replacement
+
+### KmsKeyId
+The ID of the AWS KMS key to be used to protect the encrypted file system. This parameter is required. This ID can be in one of the following formats:
+
+* Key ID - A unique identifier of the key, for example 1234abcd-12ab-34cd-56ef-1234567890ab.
+
+If KmsKeyId is specified, the Encrypted parameter must be set to true.
+
+Required: Conditional
+
+Type: String
 
 Update requires: Replacement
 

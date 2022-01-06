@@ -39,6 +39,8 @@ Parameters:
       - "true"
       - "false"
     Default: "false"  
+  KmsKeyId:
+    Type: String  
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -92,6 +94,7 @@ Resources:
         Vpc: !Ref Vpc
         PerformanceMode: !Ref PerformanceMode
         Encrypted: !Ref Encrypted
+        KmsKeyId: !Ref KmsKeyId
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
