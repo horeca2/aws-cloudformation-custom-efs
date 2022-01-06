@@ -43,6 +43,7 @@ Resources:
       ServiceToken: !GetAtt RunEfsStateMachineLambda.Arn
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
+      PerformanceMode: !Ref PerformanceMode
  
   FixingEfs:
     Type: Custom::FixingEfs
@@ -52,6 +53,7 @@ Resources:
       ServiceToken: !GetAtt RunFixStateMachineLambda.Arn
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
+      PerformanceMode: !Ref PerformanceMode
        
   EfsStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -90,6 +92,12 @@ Resources:
                                 "Variable": "$.Request.ResourceProperties.RecoveryPoint",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.RecoveryPoint"
                               }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.PerformanceMode",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
+                              }
                             }
                           ]
                         }
@@ -122,7 +130,7 @@ Resources:
                 "Metadata": {
                   "file-system-id.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.file-system-id",
                   "Encrypted": "false",
-                  "PerformanceMode.$": "$.PerformanceMode",
+                  "PerformanceMode.$": "$.Request.ResourceProperties.PerformanceMode",
                   "CreationToken.$": "$.GetRecoveryPointRestoreMetadataResult.RestoreMetadata.aws:backup:request-id",
                   "newFileSystem": "true"
                 },
@@ -282,6 +290,12 @@ Resources:
                               "Not": {
                                 "Variable": "$.Request.ResourceProperties.RecoveryPoint",
                                 "StringEqualsPath": "$.Request.OldResourceProperties.RecoveryPoint"
+                              }
+                            },
+                            {
+                              "Not": {
+                                "Variable": "$.Request.ResourceProperties.PerformanceMode",
+                                "StringEqualsPath": "$.Request.OldResourceProperties.PerformanceMode"
                               }
                             }
                           ]
@@ -469,7 +483,6 @@ Resources:
                   BackupRoleArn: process.env.BackupRoleArn,
                   ArnToEfsIdLambdaName: process.env.ArnToEfsIdLambdaName,
                   SendResponseLambdaName: process.env.SendResponseLambdaName
-                  PerformanceMode: process.env.PerformanceMode
                 }),
                 name: event.RequestId
             };
@@ -481,7 +494,6 @@ Resources:
           BackupRoleArn: !GetAtt BackupRole.Arn
           ArnToEfsIdLambdaName: !Ref ArnToEfsIdLambda
           SendResponseLambdaName: !Ref SendResponseLambda
-          PerformanceMode: !Ref PerformanceMode
       Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
