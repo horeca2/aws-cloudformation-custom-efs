@@ -20,10 +20,23 @@ Parameters:
       - generalPurpose
       - maxIO
     Default: generalPurpose
-           
+  TransitionToIA:
+    Type: String
+    AllowedValues:
+      - AFTER_14_DAYS
+      - AFTER_30_DAYS
+      - AFTER_60_DAYS
+      - AFTER_7_DAYS
+      - AFTER_90_DAYS
+  TransitionToPrimaryStorageClass:
+    Type: String
+    AllowedValues:
+      - AFTER_1_ACCESS
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
+  IsTransitionToIANotPresent: !Equals [!Ref TransitionToIA, '']  
+  IsTransitionToPrimaryStorageClassNotPresent: !Equals [!Ref TransitionToPrimaryStorageClass, '']
        
 Resources:
   EmptyEfs:
@@ -35,6 +48,10 @@ Resources:
       Encrypted: "false"
       PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
+      LifecyclePolicies: 
+        - TransitionToIA: !If [IsTransitionToIANotPresent, !Ref AWS::NoValue, !Ref TransitionToIA]
+          TransitionToPrimaryStorageClass: !If [IsTransitionToPrimaryStorageClassNotPresent, !Ref AWS::NoValue, !Ref TransitionToPrimaryStorageClass]
+
   
   RecoveredEfs:
     Type: Custom::RecoveredEfs
