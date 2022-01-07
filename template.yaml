@@ -23,20 +23,24 @@ Parameters:
   TransitionToIA:
     Type: String
     AllowedValues:
+      - NONE
       - AFTER_14_DAYS
       - AFTER_30_DAYS
       - AFTER_60_DAYS
       - AFTER_7_DAYS
       - AFTER_90_DAYS
+    Default: NONE  
   TransitionToPrimaryStorageClass:
     Type: String
     AllowedValues:
+      - NONE
       - AFTER_1_ACCESS
+    Default: NONE   
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
-  IsTransitionToIANotPresent: !Equals [!Ref TransitionToIA, '']  
-  IsTransitionToPrimaryStorageClassNotPresent: !Equals [!Ref TransitionToPrimaryStorageClass, '']
+  IsTransitionToIANone: !Equals [!Ref TransitionToIA, NONE]  
+  IsTransitionToPrimaryStorageClassNone: !Equals [!Ref TransitionToPrimaryStorageClass, NONE]
        
 Resources:
   EmptyEfs:
@@ -49,9 +53,8 @@ Resources:
       PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
       LifecyclePolicies: 
-        - TransitionToIA: !If [IsTransitionToIANotPresent, !Ref AWS::NoValue, !Ref TransitionToIA]
-          TransitionToPrimaryStorageClass: !If [IsTransitionToPrimaryStorageClassNotPresent, !Ref AWS::NoValue, !Ref TransitionToPrimaryStorageClass]
-
+        - TransitionToIA: !If [IsTransitionToIANone, !Ref AWS::NoValue, !Ref TransitionToIA]
+        - TransitionToPrimaryStorageClass: !If [IsTransitionToPrimaryStorageClassNone, !Ref AWS::NoValue, !Ref TransitionToPrimaryStorageClass]
   
   RecoveredEfs:
     Type: Custom::RecoveredEfs

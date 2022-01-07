@@ -33,6 +33,22 @@ Parameters:
       - generalPurpose
       - maxIO
     Default: generalPurpose  
+  TransitionToIA:
+    Type: String
+    AllowedValues:
+      - NONE
+      - AFTER_14_DAYS
+      - AFTER_30_DAYS
+      - AFTER_60_DAYS
+      - AFTER_7_DAYS
+      - AFTER_90_DAYS
+    Default: NONE   
+  TransitionToPrimaryStorageClass:
+    Type: String
+    AllowedValues:
+      - NONE
+      - AFTER_1_ACCESS  
+    Default: NONE   
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -85,6 +101,8 @@ Resources:
         SecurityGroup: !Ref EfsSecurityGroup 
         Vpc: !Ref Vpc
         PerformanceMode: !Ref PerformanceMode
+        TransitionToIA: !Ref TransitionToIA
+        TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
