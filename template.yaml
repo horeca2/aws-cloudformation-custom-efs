@@ -41,6 +41,7 @@ Conditions:
   IsRestore: !Not [!Condition IsEmpty]  
   IsTransitionToIANone: !Equals [!Ref TransitionToIA, NONE]  
   IsTransitionToPrimaryStorageClassNone: !Equals [!Ref TransitionToPrimaryStorageClass, NONE]
+  IsLifecyclePolicyNone: !And [!Condition IsTransitionToIANone, !Condition IsTransitionToPrimaryStorageClassNone]
        
 Resources:
   EmptyEfs:
@@ -53,8 +54,20 @@ Resources:
       PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
       LifecyclePolicies: 
-        - TransitionToIA: !If [IsTransitionToIANone, !Ref AWS::NoValue, !Ref TransitionToIA]
-        - TransitionToPrimaryStorageClass: !If [IsTransitionToPrimaryStorageClassNone, !Ref AWS::NoValue, !Ref TransitionToPrimaryStorageClass]
+        !If
+          - IsLifecyclePolicyNone
+          - !Ref AWS::NoValue
+          -
+            - !If 
+                - IsTransitionToIANone
+                - !Ref AWS::NoValue
+                - 
+                  TransitionToIA: !Ref TransitionToIA
+            - !If 
+                - IsTransitionToPrimaryStorageClassNone
+                - !Ref AWS::NoValue
+                - 
+                  TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
   
   RecoveredEfs:
     Type: Custom::RecoveredEfs
