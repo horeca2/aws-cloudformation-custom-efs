@@ -77,6 +77,8 @@ Resources:
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
       PerformanceMode: !Ref PerformanceMode
+      TransitionToIA: !Ref TransitionToIA
+      TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
  
   FixingEfs:
     Type: Custom::FixingEfs
@@ -221,6 +223,99 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
+              "Next": "Choice"
+            },
+            "Choice": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.Request.ResourceProperties.TransitionToIA",
+                      "StringEquals": "NONE"
+                    },
+                    {
+                      "Variable": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass",
+                      "StringEquals": "NONE"
+                    }
+                  ],
+                  "Next": "None"
+                },
+                {
+                  "And": [
+                    {
+                      "Not": {
+                        "Variable": "$.Request.ResourceProperties.TransitionToIA",
+                        "StringEquals": "NONE"
+                      }
+                    },
+                    {
+                      "Not": {
+                        "Variable": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass",
+                        "StringEquals": "NONE"
+                      }
+                    }
+                  ],
+                  "Next": "IA and Primary"
+                },
+                {
+                  "And": [
+                    {
+                      "Not": {
+                        "Variable": "$.Request.ResourceProperties.TransitionToIA",
+                        "StringEquals": "NONE"
+                      }
+                    },
+                    {
+                      "Variable": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass",
+                      "StringEquals": "NONE"
+                    }
+                  ],
+                  "Next": "IA only"
+                },
+                {
+                  "And": [
+                    {
+                      "Not": {
+                        "Variable": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass",
+                        "StringEquals": "NONE"
+                      }
+                    },
+                    {
+                      "Variable": "$.Request.ResourceProperties.TransitionToIA",
+                      "StringEquals": "NONE"
+                    }
+                  ],
+                  "Next": "Primary only"
+                }
+              ]
+            },
+            "None": {
+              "Type": "Pass",
+              "Next": "PutLifecycleConfiguration",
+              "Result": [],
+              "ResultPath": "$.LifecyclePolicies"
+            },
+            "IA and Primary": {
+              "Type": "Pass",
+              "Next": "PutLifecycleConfiguration",
+              "Result": [
+                {
+                  "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA"
+                },
+                {
+                  "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
+                }
+              ],
+              "ResultPath": "$.LifecyclePolicies"
+            },
+            "PutLifecycleConfiguration": {
+              "Type": "Task",
+              "Parameters": {
+                "FileSystemId.$": "$.TransformArnToEfsIdResult.Payload.EfsId",
+                "LifecyclePolicies.$": "$.LifecyclePolicies"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
               "Next": "Send success created response"
             },
             "Send success created response": {
@@ -281,9 +376,29 @@ Resources:
                 }
               ],
               "End": true
+            },
+            "IA only": {
+              "Type": "Pass",
+              "Next": "PutLifecycleConfiguration",
+              "Result": [
+                {
+                  "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA"
+                }
+              ],
+              "ResultPath": "$.LifecyclePolicies"
+            },
+            "Primary only": {
+              "Type": "Pass",
+              "Next": "PutLifecycleConfiguration",
+              "Result": [
+                {
+                  "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
+                }
+              ],
+              "ResultPath": "$.LifecyclePolicies"
             }
           }
-        }
+        } 
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
   

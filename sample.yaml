@@ -21,7 +21,7 @@ Parameters:
     Default: Default
   RecoveryPointArn:
     Type: String
-    Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
+    Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:cc877841-76d8-42c6-9e9c-2580d85f814d
   TemplateURL:
     Type: String
     MinLength: 1   
