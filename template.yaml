@@ -142,6 +142,31 @@ Resources:
                   "Next": "GetRecoveryPointRestoreMetadata"
                 },
                 {
+                  "And": [
+                    {
+                      "Variable": "$.Request.RequestType",
+                      "StringEquals": "Update"
+                    },
+                    {
+                      "Or": [
+                        {
+                          "Not": {
+                            "Variable": "$.Request.ResourceProperties.TransitionToIA",
+                            "StringEqualsPath": "$.Request.OldResourceProperties.TransitionToIA"
+                          }
+                        },
+                        {
+                          "Not": {
+                            "Variable": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass",
+                            "StringEqualsPath": "$.Request.OldResourceProperties.TransitionToPrimaryStorageClass"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "Next": "Choice lifecycle"
+                },
+                {
                   "Variable": "$.Request.RequestType",
                   "StringEquals": "Delete",
                   "Next": "DeleteFileSystem"
@@ -203,14 +228,13 @@ Resources:
             },
             "Transform arn to efs id": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
+              "Resource": "$.ArnToEfsIdLambdaArn",
               "Parameters": {
-                "FunctionName.$": "$.ArnToEfsIdLambdaName",
                 "Payload": {
                   "Arn.$": "$.DescribeRestoreJobResult.CreatedResourceArn"
                 }
               },
-              "ResultPath": "$.TransformArnToEfsIdResult",
+              "ResultPath": "$.Request.PhysicalResourceId",
               "Retry": [
                 {
                   "ErrorEquals": [
@@ -223,9 +247,11 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "Next": "Choice"
+              "Next": "Choice lifecycle",
+              "OutputPath": "$.Payload.EfsId",
+              "Comment": "This function set Request.PhysicalResourceId to created filesystem id"
             },
-            "Choice": {
+            "Choice lifecycle": {
               "Type": "Choice",
               "Choices": [
                 {
@@ -239,7 +265,7 @@ Resources:
                       "StringEquals": "NONE"
                     }
                   ],
-                  "Next": "None"
+                  "Next": "Lifecycle None"
                 },
                 {
                   "And": [
@@ -256,7 +282,7 @@ Resources:
                       }
                     }
                   ],
-                  "Next": "IA and Primary"
+                  "Next": "Lifecycle IA and Primary"
                 },
                 {
                   "And": [
@@ -271,7 +297,7 @@ Resources:
                       "StringEquals": "NONE"
                     }
                   ],
-                  "Next": "IA only"
+                  "Next": "Lifecycle IA"
                 },
                 {
                   "And": [
@@ -286,73 +312,21 @@ Resources:
                       "StringEquals": "NONE"
                     }
                   ],
-                  "Next": "Primary only"
+                  "Next": "Lifecycle Primary"
                 }
               ]
             },
-            "None": {
-              "Type": "Pass",
-              "Next": "PutLifecycleConfiguration",
-              "Result": [],
-              "ResultPath": "$.LifecyclePolicies"
-            },
-            "IA and Primary": {
-              "Type": "Pass",
-              "Next": "PutLifecycleConfiguration",
-              "Result": [
-                {
-                  "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA"
-                },
-                {
-                  "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
-                }
-              ],
-              "ResultPath": "$.LifecyclePolicies"
-            },
-            "PutLifecycleConfiguration": {
+            "Lifecycle None": {
               "Type": "Task",
+              "Next": "Send success response",
               "Parameters": {
-                "FileSystemId.$": "$.TransformArnToEfsIdResult.Payload.EfsId",
-                "LifecyclePolicies.$": "$.LifecyclePolicies"
+                "FileSystemId.$": "$.Request.PhysicalResourceId",
+                "LifecyclePolicies": []
               },
               "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
-              "Next": "Send success created response"
+              "ResultPath": "$.LifecycleNoneResult"
             },
-            "Send success created response": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "Parameters": {
-                "FunctionName.$": "$.SendResponseLambdaName",
-                "Payload": {
-                  "Request.$": "$.Request",
-                  "ResponseStatus": "SUCCESS",
-                  "PhysicalResourceId.$": "$.TransformArnToEfsIdResult.Payload.EfsId"
-                }
-              },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException"
-                  ],
-                  "IntervalSeconds": 2,
-                  "MaxAttempts": 6,
-                  "BackoffRate": 2
-                }
-              ],
-              "End": true
-            },
-            "DeleteFileSystem": {
-              "Type": "Task",
-              "Parameters": {
-                "FileSystemId.$": "$.Request.PhysicalResourceId"
-              },
-              "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
-              "Next": "Send success deleted response",
-              "ResultPath": "$.DeleteFileSystemResult"
-            },
-            "Send success deleted response": {
+            "Send success response": {
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
@@ -377,25 +351,59 @@ Resources:
               ],
               "End": true
             },
-            "IA only": {
-              "Type": "Pass",
-              "Next": "PutLifecycleConfiguration",
-              "Result": [
-                {
-                  "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA"
-                }
-              ],
-              "ResultPath": "$.LifecyclePolicies"
+            "Lifecycle IA and Primary": {
+              "Type": "Task",
+              "Next": "Send success response",
+              "Parameters": {
+                "FileSystemId.$": "$.Request.PhysicalResourceId",
+                "LifecyclePolicies": [
+                  {
+                    "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA"
+                  },
+                  {
+                    "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
+                  }
+                ]
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
+              "ResultPath": "$.LifecycleIAAndPrimaryResult"
             },
-            "Primary only": {
-              "Type": "Pass",
-              "Next": "PutLifecycleConfiguration",
-              "Result": [
-                {
-                  "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
-                }
-              ],
-              "ResultPath": "$.LifecyclePolicies"
+            "DeleteFileSystem": {
+              "Type": "Task",
+              "Parameters": {
+                "FileSystemId.$": "$.Request.PhysicalResourceId"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
+              "ResultPath": "$.DeleteFileSystemResult",
+              "Next": "Send success response"
+            },
+            "Lifecycle IA": {
+              "Type": "Task",
+              "Next": "Send success response",
+              "Parameters": {
+                "FileSystemId.$": "$.Request.PhysicalResourceId",
+                "LifecyclePolicies": [
+                  {
+                    "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA"
+                  }
+                ]
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
+              "ResultPath": "$.LifecycleIAResult"
+            },
+            "Lifecycle Primary": {
+              "Type": "Task",
+              "Next": "Send success response",
+              "Parameters": {
+                "FileSystemId.$": "$.Request.PhysicalResourceId",
+                "LifecyclePolicies": [
+                  {
+                    "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
+                  }
+                ]
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
+              "ResultPath": "$.LifecyclePrimaryResult"
             }
           }
         } 
@@ -629,7 +637,7 @@ Resources:
                 input: JSON.stringify({
                   Request: event,
                   BackupRoleArn: process.env.BackupRoleArn,
-                  ArnToEfsIdLambdaName: process.env.ArnToEfsIdLambdaName,
+                  ArnToEfsIdLambdaArn: process.env.ArnToEfsIdLambdaArn,
                   SendResponseLambdaName: process.env.SendResponseLambdaName
                 }),
                 name: event.RequestId
@@ -640,7 +648,7 @@ Resources:
         Variables:
           StateMachineArn: !Ref EfsStateMachine
           BackupRoleArn: !GetAtt BackupRole.Arn
-          ArnToEfsIdLambdaName: !Ref ArnToEfsIdLambda
+          ArnToEfsIdLambdaArn: !GetAtt ArnToEfsIdLambda.Arn
           SendResponseLambdaName: !Ref SendResponseLambda
       Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
