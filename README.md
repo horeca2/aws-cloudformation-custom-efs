@@ -119,6 +119,28 @@ Type: String
 
 Update requires: Replacement
 
+### TransitionToIA
+Describes the period of time that a file is not accessed, after which it transitions to IA storage. Metadata operations such as listing the contents of a directory don't count as file access events.
+
+Required: No
+
+Type: String
+
+Valid Values: NONE | AFTER_7_DAYS | AFTER_14_DAYS | AFTER_30_DAYS | AFTER_60_DAYS | AFTER_90_DAYS
+
+Update requires: No interruption
+
+### TransitionToPrimaryStorageClass
+Describes when to transition a file from IA storage to primary storage. Metadata operations such as listing the contents of a directory don't count as file access events.
+
+Type: String
+
+Valid Values: NONE | AFTER_1_ACCESS
+
+Required: No
+
+Update requires: No interruption
+
 ## Return values
 
 ### Fn :: GetAtt
@@ -129,7 +151,7 @@ Filesystem identifier, e.g. fs-06799d63c3aeb4707
 
 ## Examples
 
-The following sample template mounts a filesystem to an EC2 instance. At any time, you can change the parameters of the BackupVaultName and RecoveryPointArn templates, and then CloudFormation will restore your file system from a backup, create a new EC2 instance and mount the restored file system to it. Then the old file system and the old instance will be safely removed. Great, isn't it? =)
+The following sample template mounts a filesystem to an EC2 instance. At any time, you can change the parameters of the BackupVaultName and RecoveryPointArn templates, and then CloudFormation will restore your file system from a backup, create a new EC2 instance and mount the restored file system to it. Then the old file system and the old instance will be safely removed. Great, isn't it? :)
 
 ``` YAML
 AWSTemplateFormatVersion: 2010-09-09
@@ -155,13 +177,42 @@ Parameters:
     Default: Default
   RecoveryPointArn:
     Type: String
-    Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:8ce28d06-437d-4c1b-83fa-dc2e46e729fe
+    Default: arn:aws:backup:eu-central-1:918404900336:recovery-point:cc877841-76d8-42c6-9e9c-2580d85f814d
   TemplateURL:
     Type: String
     MinLength: 1   
     Default: https://s3.eu-central-1.amazonaws.com/aos.bucket/template.yaml
     Description: URL for template.yaml. Should be in S3 
-
+  PerformanceMode:
+    Type: String
+    AllowedValues:
+      - generalPurpose
+      - maxIO
+    Default: generalPurpose  
+  TransitionToIA:
+    Type: String
+    AllowedValues:
+      - NONE
+      - AFTER_14_DAYS
+      - AFTER_30_DAYS
+      - AFTER_60_DAYS
+      - AFTER_7_DAYS
+      - AFTER_90_DAYS
+    Default: NONE   
+  TransitionToPrimaryStorageClass:
+    Type: String
+    AllowedValues:
+      - NONE
+      - AFTER_1_ACCESS  
+    Default: NONE   
+  Encrypted:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"  
+  KmsKeyId:
+    Type: String
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -213,7 +264,11 @@ Resources:
         Subnet: !Ref Subnet
         SecurityGroup: !Ref EfsSecurityGroup 
         Vpc: !Ref Vpc
-        PerformanceMode: generalPurpose
+        PerformanceMode: !Ref PerformanceMode
+        TransitionToIA: !Ref TransitionToIA
+        TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
+        Encrypted: !Ref Encrypted
+        KmsKeyId: !Ref KmsKeyId
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
@@ -234,6 +289,5 @@ Resources:
         LaunchTemplateId: !Ref LaunchTemplate    
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
       SubnetId: !Ref Subnet
-  
-
+    
 ```
