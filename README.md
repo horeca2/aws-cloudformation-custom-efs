@@ -80,7 +80,7 @@ Type: String
 Updating requires: Replacement
 
 ### TemplateURL
-The location of the file containing the body of the template. The URL must point to the template located in the Amazon S3 bucket. Copy the template.yaml file to your cart and link to it here.
+The location of the file containing the body of the template. The URL must point to the template located in the Amazon S3 bucket. Copy the template.yaml file to your bucket and link to it here.
 
 Required: Yes
 
