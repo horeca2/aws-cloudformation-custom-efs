@@ -151,7 +151,7 @@ Filesystem identifier, e.g. fs-06799d63c3aeb4707
 
 ## Examples
 
-The following sample template mounts a filesystem to an EC2 instance. At any time, you can change the parameters of the BackupVaultName and RecoveryPointArn templates, and then CloudFormation will restore your file system from a backup, create a new EC2 instance and mount the restored file system to it. Then the old file system and the old instance will be safely removed. Great, isn't it? =)
+The following sample template mounts a filesystem to an EC2 instance. At any time, you can change the parameters of the BackupVaultName and RecoveryPointArn templates, and then CloudFormation will restore your file system from a backup, create a new EC2 instance and mount the restored file system to it. Then the old file system and the old instance will be safely removed. Great, isn't it? :)
 
 ``` YAML
 AWSTemplateFormatVersion: 2010-09-09
