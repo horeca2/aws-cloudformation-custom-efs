@@ -290,5 +290,4 @@ Resources:
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
       SubnetId: !Ref Subnet
     
-
 ```
