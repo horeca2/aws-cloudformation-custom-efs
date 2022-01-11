@@ -1,5 +1,5 @@
 # aws-cloudformation-restore-efs
-Custom EFS with automatic recovery from backup
+Custom EFS with automatic recovery from backup. Use it in your cloudformation template
 
 ## Problem with current EFS implementation
 When you fully restore an EFS snapshot to a new filesystem, the files are not placed in the root of the filesystem, as you might expect, but in a directory named aws-backup-restore_datetime.
