@@ -20,6 +20,22 @@ Parameters:
       - generalPurpose
       - maxIO
     Default: generalPurpose
+  TransitionToIA:
+    Type: String
+    AllowedValues:
+      - NONE
+      - AFTER_14_DAYS
+      - AFTER_30_DAYS
+      - AFTER_60_DAYS
+      - AFTER_7_DAYS
+      - AFTER_90_DAYS
+    Default: NONE  
+  TransitionToPrimaryStorageClass:
+    Type: String
+    AllowedValues:
+      - NONE
+      - AFTER_1_ACCESS
+    Default: NONE   
   Encrypted:
     Type: String
     AllowedValues:
@@ -32,6 +48,9 @@ Parameters:
 Conditions:
   IsEmpty: !Equals [!Ref RecoveryPointArn, '']  
   IsRestore: !Not [!Condition IsEmpty]  
+  IsTransitionToIANone: !Equals [!Ref TransitionToIA, NONE]  
+  IsTransitionToPrimaryStorageClassNone: !Equals [!Ref TransitionToPrimaryStorageClass, NONE]
+  IsLifecyclePolicyNone: !And [!Condition IsTransitionToIANone, !Condition IsTransitionToPrimaryStorageClassNone]
        
 Resources:
   EmptyEfs:
@@ -42,6 +61,21 @@ Resources:
         Status: DISABLED
       PerformanceMode: !Ref PerformanceMode
       ThroughputMode: bursting
+      LifecyclePolicies: 
+        !If
+          - IsLifecyclePolicyNone
+          - !Ref AWS::NoValue
+          -
+            - !If 
+                - IsTransitionToIANone
+                - !Ref AWS::NoValue
+                - 
+                  TransitionToIA: !Ref TransitionToIA
+            - !If 
+                - IsTransitionToPrimaryStorageClassNone
+                - !Ref AWS::NoValue
+                - 
+                  TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
       Encrypted: !Ref Encrypted
       KmsKeyId: !Ref KmsKeyId
   
@@ -53,6 +87,8 @@ Resources:
       BackupVaultName: !Ref BackupVaultName
       RecoveryPoint: !Ref RecoveryPointArn
       PerformanceMode: !Ref PerformanceMode
+      TransitionToIA: !Ref TransitionToIA
+      TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
       Encrypted: !Ref Encrypted
       KmsKeyId: !Ref KmsKeyId
  
@@ -132,11 +168,96 @@ Resources:
                   "Next": "GetRecoveryPointRestoreMetadata"
                 },
                 {
+                  "And": [
+                    {
+                      "Variable": "$.Request.RequestType",
+                      "StringEquals": "Update"
+                    },
+                    {
+                      "Or": [
+                        {
+                          "Not": {
+                            "Variable": "$.Request.ResourceProperties.TransitionToIA",
+                            "StringEqualsPath": "$.Request.OldResourceProperties.TransitionToIA"
+                          }
+                        },
+                        {
+                          "Not": {
+                            "Variable": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass",
+                            "StringEqualsPath": "$.Request.OldResourceProperties.TransitionToPrimaryStorageClass"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "Next": "BuildLifecycleConfiguration (1)"
+                },
+                {
                   "Variable": "$.Request.RequestType",
                   "StringEquals": "Delete",
                   "Next": "DeleteFileSystem"
                 }
               ]
+            },
+            "BuildLifecycleConfiguration (1)": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "Payload": {
+                  "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA",
+                  "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
+                },
+                "FunctionName.$": "$.BuildLifecycleConfigurationLambdaName"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "PutLifecycleConfiguration (1)",
+              "ResultPath": "$.BuildLifecycleConfigurationResult"
+            },
+            "PutLifecycleConfiguration (1)": {
+              "Type": "Task",
+              "Next": "Send success updated response",
+              "Parameters": {
+                "FileSystemId.$": "$.Request.PhysicalResourceId",
+                "LifecyclePolicies.$": "$.BuildLifecycleConfigurationResult.Payload"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
+              "ResultPath": "$.LifecycleNoneResult"
+            },
+            "Send success updated response": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName.$": "$.SendResponseLambdaName",
+                "Payload": {
+                  "Request.$": "$.Request",
+                  "ResponseStatus": "SUCCESS",
+                  "PhysicalResourceId.$": "$.Request.PhysicalResourceId"
+                }
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "End": true
             },
             "GetRecoveryPointRestoreMetadata": {
               "Type": "Task",
@@ -187,21 +308,20 @@ Resources:
                 {
                   "Variable": "$.DescribeRestoreJobResult.Status",
                   "StringEquals": "COMPLETED",
-                  "Next": "Transform arn to efs id"
+                  "Next": "ConvertArnToId"
                 }
               ],
               "Default": "Wait for job completed"
             },
-            "Transform arn to efs id": {
+            "ConvertArnToId": {
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName.$": "$.ArnToEfsIdLambdaName",
                 "Payload": {
                   "Arn.$": "$.DescribeRestoreJobResult.CreatedResourceArn"
-                }
+                },
+                "FunctionName.$": "$.ConvertArnToIdLambdaName"
               },
-              "ResultPath": "$.TransformArnToEfsIdResult",
               "Retry": [
                 {
                   "ErrorEquals": [
@@ -214,7 +334,43 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "Next": "Send success created response"
+              "Next": "BuildLifecycleConfiguration",
+              "ResultPath": "$.ConvertArnToIdResult"
+            },
+            "BuildLifecycleConfiguration": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "Payload": {
+                  "TransitionToIA.$": "$.Request.ResourceProperties.TransitionToIA",
+                  "TransitionToPrimaryStorageClass.$": "$.Request.ResourceProperties.TransitionToPrimaryStorageClass"
+                },
+                "FunctionName.$": "$.BuildLifecycleConfigurationLambdaName"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "PutLifecycleConfiguration",
+              "ResultPath": "$.BuildLifecycleConfigurationResult"
+            },
+            "PutLifecycleConfiguration": {
+              "Type": "Task",
+              "Next": "Send success created response",
+              "Parameters": {
+                "FileSystemId.$": "$.ConvertArnToIdResult.Payload",
+                "LifecyclePolicies.$": "$.BuildLifecycleConfigurationResult.Payload"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:putLifecycleConfiguration",
+              "ResultPath": "$.LifecycleNoneResult"
             },
             "Send success created response": {
               "Type": "Task",
@@ -224,7 +380,7 @@ Resources:
                 "Payload": {
                   "Request.$": "$.Request",
                   "ResponseStatus": "SUCCESS",
-                  "PhysicalResourceId.$": "$.TransformArnToEfsIdResult.Payload.EfsId"
+                  "PhysicalResourceId.$": "$.ConvertArnToIdResult.Payload"
                 }
               },
               "Retry": [
@@ -240,15 +396,6 @@ Resources:
                 }
               ],
               "End": true
-            },
-            "DeleteFileSystem": {
-              "Type": "Task",
-              "Parameters": {
-                "FileSystemId.$": "$.Request.PhysicalResourceId"
-              },
-              "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
-              "Next": "Send success deleted response",
-              "ResultPath": "$.DeleteFileSystemResult"
             },
             "Send success deleted response": {
               "Type": "Task",
@@ -274,9 +421,18 @@ Resources:
                 }
               ],
               "End": true
+            },
+            "DeleteFileSystem": {
+              "Type": "Task",
+              "Parameters": {
+                "FileSystemId.$": "$.Request.PhysicalResourceId"
+              },
+              "Resource": "arn:aws:states:::aws-sdk:efs:deleteFileSystem",
+              "ResultPath": "$.DeleteFileSystemResult",
+              "Next": "Send success deleted response"
             }
           }
-        }
+        } 
       # DefinitionSubstitutions:  
       RoleArn: !GetAtt StateMachineRole.Arn
   
@@ -519,8 +675,9 @@ Resources:
                 input: JSON.stringify({
                   Request: event,
                   BackupRoleArn: process.env.BackupRoleArn,
-                  ArnToEfsIdLambdaName: process.env.ArnToEfsIdLambdaName,
-                  SendResponseLambdaName: process.env.SendResponseLambdaName
+                  ConvertArnToIdLambdaName: process.env.ConvertArnToIdLambdaName,
+                  SendResponseLambdaName: process.env.SendResponseLambdaName,
+                  BuildLifecycleConfigurationLambdaName: process.env.BuildLifecycleConfigurationLambdaName
                 }),
                 name: event.RequestId
             };
@@ -530,8 +687,9 @@ Resources:
         Variables:
           StateMachineArn: !Ref EfsStateMachine
           BackupRoleArn: !GetAtt BackupRole.Arn
-          ArnToEfsIdLambdaName: !Ref ArnToEfsIdLambda
+          ConvertArnToIdLambdaName: !Ref ConvertArnToIdLambda
           SendResponseLambdaName: !Ref SendResponseLambda
+          BuildLifecycleConfigurationLambdaName: !Ref BuildLifecycleConfigurationLambda
       Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
@@ -568,7 +726,7 @@ Resources:
       Timeout: 30
 
   # Converts arn of the restored resource to file system id. 
-  ArnToEfsIdLambda:
+  ConvertArnToIdLambda:
     Type: 'AWS::Lambda::Function' 
     Condition: IsRestore
     Properties:
@@ -576,10 +734,35 @@ Resources:
         ZipFile: |
           exports.handler = async (event) => {
             let match = event.Arn.match(/file-system\/(.+)/) || [];
-            return {
-              EfsId: match[1]
-            };
+            return match[1];
           }
+      Role: !GetAtt CommonLambdaRole.Arn
+      Runtime: nodejs14.x
+      Handler: index.handler
+      Timeout: 30
+  
+  BuildLifecycleConfigurationLambda:
+    Type: 'AWS::Lambda::Function' 
+    Condition: IsRestore
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            var result = [];
+            if (event.TransitionToIA != "NONE")
+              result.push(
+                {
+                  TransitionToIA: event.TransitionToIA
+                }
+              );
+            if (event.TransitionToPrimaryStorageClass != "NONE")
+              result.push(
+                {
+                  TransitionToPrimaryStorageClass: event.TransitionToPrimaryStorageClass
+                }
+              );    
+            return result;
+          };
       Role: !GetAtt CommonLambdaRole.Arn
       Runtime: nodejs14.x
       Handler: index.handler
