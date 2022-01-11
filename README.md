@@ -1,4 +1,4 @@
-# aws-cloudformation-custom-efs
+# aws-cloudformation-restore-efs
 Custom EFS with automatic recovery from backup
 
 ## Problem with current EFS implementation
