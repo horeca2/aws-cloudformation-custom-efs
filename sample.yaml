@@ -49,6 +49,14 @@ Parameters:
       - NONE
       - AFTER_1_ACCESS  
     Default: NONE   
+  Encrypted:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"  
+  KmsKeyId:
+    Type: String
 Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -103,6 +111,8 @@ Resources:
         PerformanceMode: !Ref PerformanceMode
         TransitionToIA: !Ref TransitionToIA
         TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
+        Encrypted: !Ref Encrypted
+        KmsKeyId: !Ref KmsKeyId
       TemplateURL: !Ref TemplateURL
 
   AccessPoint:
