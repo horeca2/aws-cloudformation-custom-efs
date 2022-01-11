@@ -23,6 +23,8 @@ Type: AWS::CloudFormation::Stack
       PerformanceMode: String
       Encrypted: Boolean
       KmsKeyId: String
+      TransitionToIA: String
+      TransitionToPrimaryStorageClass: String
 
 ```
 
