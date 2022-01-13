@@ -116,7 +116,7 @@ Resources:
   AccessPoint:
     Type: 'AWS::EFS::AccessPoint'
     Properties:
-      FileSystemId: !GetAtt Efs.Outputs.Efs
+      FileSystemId: !GetAtt Efs.Outputs.FileSystemId
       # Give full access. "0" is root user
       PosixUser:
         Gid: 0
