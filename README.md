@@ -148,8 +148,11 @@ Update requires: No interruption
 ### Fn :: GetAtt
 An inner function returns the value for the specified attribute of this type. The available attributes and examples of return values ​​are shown below.
 
-#### Outputs.Efs
-Filesystem identifier, e.g. fs-06799d63c3aeb4707
+#### Outputs.Arn
+The Amazon Resource Name (ARN) of the EFS file system. For example: arn:aws:elasticfilesystem:us-west-2:1111333322228888:file-system/fs-12345678
+
+#### Outputs.FileSystemId
+The ID of the EFS file system. For example: fs-12345678
 
 ## Examples
 
@@ -231,7 +234,7 @@ Resources:
               yum install -y amazon-efs-utils
               mkdir /home/ec2-user/efs 
               mount -t efs -o tls,accesspoint=${AccessPoint} ${EFS}:/ /home/ec2-user/efs            
-            - EFS: !GetAtt Efs.Outputs.Efs   
+            - EFS: !GetAtt Efs.Outputs.FileSystemId   
   
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -274,7 +277,7 @@ Resources:
   AccessPoint:
     Type: 'AWS::EFS::AccessPoint'
     Properties:
-      FileSystemId: !GetAtt Efs.Outputs.Efs
+      FileSystemId: !GetAtt Efs.Outputs.FileSystemId
       # Give full access. "0" is root user
       PosixUser:
         Gid: 0
@@ -289,6 +292,5 @@ Resources:
         LaunchTemplateId: !Ref LaunchTemplate    
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
       SubnetId: !Ref Subnet
-  
-    
+      
 ```
