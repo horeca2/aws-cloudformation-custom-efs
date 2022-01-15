@@ -872,5 +872,3 @@ Resources:
 Outputs:
   FileSystemId:
     Value: !If [IsEmpty, !Ref EmptyEfs, !Ref RecoveredEfs]
-  Arn:
-    Value: !If [IsEmpty, !GetAtt EmptyEfs.Arn, !GetAtt RecoveredEfs.Arn]
