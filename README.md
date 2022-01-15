@@ -100,16 +100,18 @@ Allowed values: generalPurpose | maxIO
 Update requires: Replacement
 
 ### Encrypted
-A Boolean value that, if true, creates an encrypted file system. When creating an encrypted file system, you must specifying a KmsKeyId for an existing AWS KMS key. 
+A String value that, if true, creates an encrypted file system. When creating an encrypted file system, you must specifying a KmsKeyId for an existing AWS KMS key. 
 
 Required: No
 
-Type: Boolean
+Type: String
+
+Allowed values: "true" | "false"
 
 Update requires: Replacement
 
 ### KmsKeyId
-The ID of the AWS KMS key to be used to protect the encrypted file system. This parameter is required. This ID can be in one of the following formats:
+The ID of the AWS KMS key to be used to protect the encrypted file system. If Encrypted is true this parameter is required. This ID can be in one of the following formats:
 
 * Key ID - A unique identifier of the key, for example 1234abcd-12ab-34cd-56ef-1234567890ab.
 
@@ -292,5 +294,5 @@ Resources:
         LaunchTemplateId: !Ref LaunchTemplate    
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
       SubnetId: !Ref Subnet
-      
+
 ```
