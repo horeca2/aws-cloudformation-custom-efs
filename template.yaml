@@ -873,4 +873,7 @@ Outputs:
   FileSystemId:
     Value: !If [IsEmpty, !Ref EmptyEfs, !Ref RecoveredEfs]
   Arn:
-    Value: !If [IsEmpty, !GetAtt EmptyEfs.Arn, !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${RecoveredEfs}"]
+    Value: !If 
+      - IsEmpty
+      - !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${EmptyEfs}"
+      - !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${RecoveredEfs}"
