@@ -50,6 +50,7 @@ Conditions:
   IsTransitionToIANone: !Equals [!Ref TransitionToIA, NONE]  
   IsTransitionToPrimaryStorageClassNone: !Equals [!Ref TransitionToPrimaryStorageClass, NONE]
   IsLifecyclePolicyNone: !And [!Condition IsTransitionToIANone, !Condition IsTransitionToPrimaryStorageClassNone]
+  IsKmsKeyIdEmpty: !Equals [!Ref KmsKeyId, '']
        
 Resources:
   EmptyEfs:
@@ -76,7 +77,7 @@ Resources:
                 - 
                   TransitionToPrimaryStorageClass: !Ref TransitionToPrimaryStorageClass
       Encrypted: !Ref Encrypted
-      KmsKeyId: !Ref KmsKeyId
+      KmsKeyId: !If [IsKmsKeyIdEmpty, !Ref AWS::NoValue, !Ref KmsKeyId] 
   
   RecoveredEfs:
     Type: Custom::RecoveredEfs
