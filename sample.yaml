@@ -25,6 +25,7 @@ Parameters:
     Type: String
     MinLength: 1   
     Description: URL for template.yaml. Should be in S3 
+    Default: https://s3.eu-central-1.amazonaws.com/aos.bucket/template.yaml
   PerformanceMode:
     Type: String
     AllowedValues:
