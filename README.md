@@ -113,7 +113,7 @@ Allowed values: "true" | "false"
 Update requires: Replacement
 
 ### KmsKeyId
-The ID of the AWS KMS key to be used to protect the encrypted file system. If Encrypted is true this parameter is required. This ID can be in one of the following formats:
+The ID of the AWS KMS key to be used to protect the encrypted file system. If Encrypted is true this parameter is required. If Encrypted is false this parameter must be empty string. This ID can be in one of the following formats:
 
 * Key ID - A unique identifier of the key, for example 1234abcd-12ab-34cd-56ef-1234567890ab.
 
