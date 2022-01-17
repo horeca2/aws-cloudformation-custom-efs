@@ -30,6 +30,8 @@ Type: AWS::CloudFormation::Stack
 
 > Unfortunately, at the moment the solution does not support all AWS :: EFS :: FileSystem properties which you can find here https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-efs-filesystem.html ... If you do not see a property, then it is not supported or is set to its default value and cannot be changed. Request properties in issues.
 
+> Keep in mind that the solution uses AWS CustomResource which limits the allowable file system restore time. The file system must have time to recover in one hour or you will get a timeout error. Do not use solutions for very large file systems. The plans are to increase the timeout to 12 hours.
+
 ## Properties
 
 ### BackupVaultName
